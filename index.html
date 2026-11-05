@@ -1295,7 +1295,7 @@ async function vUsuarios(){
         <label class="f">Nombre<input type="text" id="un" required></label>
         <label class="f">Correo (@${esc(doms.join(", @"))})<input type="email" id="ue" required></label>
         <label class="f">Rol<select id="ur">${optRol("solicitante")}</select></label>
-        <div class="row" style="align-self:end"><button class="btn pri" type="submit" id="ubtn">Crear y avisarle</button></div>
+        <div class="row" style="align-self:end"><button class="btn pri" type="submit" id="ubtn">Crear</button></div>
       </form>
     </div>
     <div class="tbl-wrap"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
@@ -1310,7 +1310,7 @@ async function vUsuarios(){
   $("#fu").onsubmit = async e => { e.preventDefault();
     const nombre = $("#un").value.trim(), email = lower($("#ue").value), rolSel = $("#ur").value;
     if(!dominioOk(email)) return toast(`Solo correos @${doms.join(" o @")}`, true);
-    try{ await conBoton($("#ubtn"), async () => { await API.adminUsuario({accion:"crear", nombre, email, rol:rolSel}); try{ await API.bienvenida(email); }catch(err){} });
+    try{ await conBoton($("#ubtn"), () => API.adminUsuario({accion:"crear", nombre, email, rol:rolSel}));
       toast(rolSel==="solicitante" ? `${nombre} ya puede entrar con su correo` : `${nombre} ya puede entrar · PIN inicial 00000`); await recargar(); vUsuarios(); }catch(err){ fallo(err); } };
   $$("tr[data-id]").forEach(tr => {
     const id = tr.dataset.id, u = S.usuarios.find(x => x.id===id);
