@@ -290,10 +290,10 @@ const EVENTOS = {
   decision:"Al solicitante y al manager: decisión del CEO", nuevo:"Al encargado: solicitud asignada a su cola",
   info:"Al solicitante: Pricing necesita información", comentario:"Comentario nuevo (a la otra parte)",
   cierre:"Al solicitante: ticket cerrado", cierre_manager:"Al manager: ticket cerrado", acceso:"Al administrador: alguien solicita acceso",
-  bienvenida:"Al usuario nuevo: ya tiene acceso", prueba:"Correo de prueba"
+  bienvenida:"Al usuario nuevo: ya tiene acceso", codigo:"Código de ingreso (no se guarda copia)", prueba:"Correo de prueba"
 };
 const VARIABLES = ["codigo","titulo","tipo","cliente","prioridad","estado","descripcion","solicitante","encargado","vencimiento","eta",
-  "monto","descuento","horas","resolucion","resultado","aprobacion","aprobador","manager","nota","comentario","decision","siguiente","autor","persona","correo","link"];
+  "monto","descuento","horas","resolucion","resultado","aprobacion","aprobador","manager","nota","comentario","decision","siguiente","autor","persona","correo","codigo_acceso","link"];
 const CFG_DEFAULT = {
   aprobacion:{titulo:"Aprobación CEO", nombre:"", cargo:"CEO", email:""},
   revision:{default_email:"", por_tipo:{}},     // manager que revisa
@@ -313,7 +313,8 @@ const CFG_DEFAULT = {
     comentario:{asunto:"Nuevo comentario en {codigo}", cuerpo:"{autor} comentó en {codigo} · {titulo}:\n\n{comentario}\n\n{link}"},
     cierre:{asunto:"Tu solicitud {codigo} fue cerrada: {resultado}", cuerpo:"Hola {solicitante},\n\nTu solicitud {codigo} · {titulo} fue cerrada como {resultado}.\n\nResolución:\n{resolucion}\n\nAtendida por: {encargado}\n\n{link}"},
     acceso:{asunto:"Solicitud de acceso a Pricing Desk: {persona}", cuerpo:"{persona} ({correo}) solicita acceso a Pricing Desk.\n\nMotivo: {comentario}\n\nApruébalo o descártalo en la pestaña Usuarios:\n{link}"},
-    bienvenida:{asunto:"Ya tienes acceso a Pricing Desk", cuerpo:"Hola {persona},\n\nYa puedes entrar a Pricing Desk con tu correo {correo}. Si tu rol usa PIN, el inicial es 00000 y te pediremos cambiarlo.\n\n{link}"},
+    bienvenida:{asunto:"Ya tienes acceso a Pricing Desk", cuerpo:"Hola {persona},\n\nYa puedes entrar a Pricing Desk con tu correo {correo}. Si tu rol lo requiere, te enviaremos un código de 6 dígitos a este correo para ingresar.\n\n{link}"},
+    codigo:{asunto:"Tu código para Pricing Desk: {codigo_acceso}", cuerpo:"Hola {persona},\n\nTu código de ingreso a Pricing Desk es:\n\n{codigo_acceso}\n\nVence en 10 minutos. Si no lo pediste, ignora este correo."},
     prueba:{asunto:"Prueba de correo · Pricing Desk", cuerpo:"Este es un correo de prueba enviado desde la configuración de Pricing Desk."}
   }
 };
@@ -408,8 +409,8 @@ const chk = ({data, error}) => { if(error) throw error; return data; };
 const uno = d => Array.isArray(d) ? d[0] : d;
 const API_SB = {
   async sesion(){ const {data} = await sb.auth.getSession(); return data.session?.user || null; },
-  async ingresar(email, pin){
-    const {data, error} = await sb.functions.invoke(CONFIG.LOGIN_FUNCTION, {body:{email, pin:pin||null}});
+  async ingresar(email, extra={}){
+    const {data, error} = await sb.functions.invoke(CONFIG.LOGIN_FUNCTION, {body:{email, ...extra}});
     if(error){
       let msg = error.message;
       try{ const j = await error.context.json(); msg = j.error || msg; }catch(e){}
@@ -574,21 +575,25 @@ const API_DEMO = {
     const u = Demo.db.usuarios.find(x => x.email===e);
     if(!u) return (Demo.db.solicitudes||[]).some(x => x.email===e && x.estado==="Pendiente") ? "solicitado" : "no_registrado";
     return u.activo ? "ok" : "inactivo"; },
-  async ingresar(email, pin){
+  async ingresar(email, extra={}){
     const estado = await this.estadoAcceso(email); if(estado!=="ok") return {estado};
-    const u = Demo.db.usuarios.find(x => x.email===lower(email));
+    const u = Demo.db.usuarios.find(x => x.email===lower(email)), pin = extra.pin, codigo = extra.codigo;
     let cambiar_pin = false;
     if(u.rol!=="solicitante"){
-      if(!pin) return {estado:"pin"};
-      Demo.db.pins = Demo.db.pins || {}; const k = Demo.db.pins[u.id] = Demo.db.pins[u.id] || {pin:"00000", cambiar:true, intentos:0, hasta:0};
-      if(k.hasta > Date.now()) return {estado:"pin", error:`Demasiados intentos. Intenta de nuevo en ${Math.ceil((k.hasta-Date.now())/60000)} minutos.`};
-      if(pin!==k.pin){ k.intentos++; if(k.intentos>=5){ k.intentos=0; k.hasta=Date.now()+15*60000; Demo.save(); return {estado:"pin", error:"Demasiados intentos. Intenta de nuevo en 15 minutos."}; }
-        Demo.save(); return {estado:"pin", error:`PIN incorrecto. Te quedan ${5-k.intentos} intento${5-k.intentos===1?"":"s"}.`}; }
-      k.intentos = 0; cambiar_pin = k.cambiar; Demo.save();
+      if(pin){
+        if(u.rol!=="admin") return {estado:"codigo", error:"Ingresa con el código que te enviamos al correo."};
+        Demo.db.pins = Demo.db.pins || {}; const k = Demo.db.pins[u.id] = Demo.db.pins[u.id] || {pin:"00000", cambiar:true, intentos:0, hasta:0};
+        if(k.hasta > Date.now()) return {estado:"pin", error:`Demasiados intentos. Intenta de nuevo en ${Math.ceil((k.hasta-Date.now())/60000)} minutos.`};
+        if(pin!==k.pin){ k.intentos++; if(k.intentos>=5){ k.intentos=0; k.hasta=Date.now()+15*60000; Demo.save(); return {estado:"pin", error:"Demasiados intentos. Intenta de nuevo en 15 minutos."}; }
+          Demo.save(); return {estado:"pin", error:`PIN incorrecto. Te quedan ${5-k.intentos} intento${5-k.intentos===1?"":"s"}.`}; }
+        k.intentos = 0; cambiar_pin = k.cambiar; Demo.save();
+      } else if(codigo){
+        if(codigo!=="123456") return {estado:"codigo", puede_pin:u.rol==="admin", error:"Código incorrecto."};
+      } else return {estado:"codigo", reenvio_en:60, puede_pin:u.rol==="admin"};
     }
     sessionStorage.setItem("pricing_demo_user", u.id); return {estado:"ok", rol:u.rol, cambiar_pin};
   },
-  async pinPendiente(){ const k = (Demo.db.pins||{})[S.user.id]; return S.me.rol!=="solicitante" && (!k || k.cambiar); },
+  async pinPendiente(){ const k = (Demo.db.pins||{})[S.user.id]; return S.me.rol==="admin" && (!k || k.cambiar); },
   async cambiarPin(actual, nuevo){ Demo.db.pins = Demo.db.pins || {}; const k = Demo.db.pins[S.user.id] || {pin:"00000"};
     if(k.pin!==actual) throw new Error("El PIN actual no es correcto"); const e = pinError(nuevo); if(e) throw new Error(e);
     Demo.db.pins[S.user.id] = {pin:nuevo, cambiar:false, intentos:0, hasta:0}; Demo.save(); },
@@ -789,7 +794,7 @@ function pintarLogin(){
         <label class="f">Correo corporativo<input type="email" id="lemail" required autocomplete="email" value="${esc(L.email)}" placeholder="nombre@legrand.com"></label>
         <button class="btn pri" type="submit" id="b1">Continuar</button>
       </form>
-      ${DEMO ? `<div class="banner" style="margin:16px 0 0"><b>Modo demo.</b> Los solicitantes entran directo; los demás roles usan PIN (inicial <b>00000</b>). Correos de prueba:
+      ${DEMO ? `<div class="banner" style="margin:16px 0 0"><b>Modo demo.</b> Los solicitantes entran directo; los demás roles reciben un código (en demo es <b>123456</b>); el admin también puede usar PIN (inicial <b>00000</b>). Correos de prueba:
         <div class="chips" style="margin-top:8px">${Demo.db.usuarios.filter(u=>u.activo).map(u => `<span class="chip" data-mail="${esc(u.email)}" title="${ROLES[u.rol]}">${esc(u.email)}</span>`).join("")}</div>
         <button class="btn ghost sm" id="reset" style="margin-top:10px">Restablecer datos de ejemplo</button></div>` : ""}`);
     $("#lemail").focus();
@@ -805,6 +810,7 @@ function pintarLogin(){
   const resultado = r => {
     if(r.estado==="ok") return iniciar();
     if(r.estado==="pin") return pasoPin(r.error);
+    if(r.estado==="codigo") return pasoCodigo(r);
     if(r.estado==="no_registrado") return pasoSolicitud();
     if(r.estado==="dominio") return pasoCorreo(`<div class="banner err">Ese correo no pertenece a un dominio autorizado (por ejemplo @legrand.com o @legrand-ext.com).</div>`);
     if(r.estado==="inactivo") return pasoCorreo(`<div class="banner err">Tu usuario está desactivado. Escribe al administrador para reactivarlo.</div>`);
@@ -821,12 +827,39 @@ function pintarLogin(){
         <button class="btn pri" type="submit" id="b2">Entrar</button>
         <button class="btn ghost sm" type="button" id="otro">Usar otro correo</button>
       </form>
-      <p class="hint" style="margin-bottom:0">Si es tu primer ingreso, tu PIN es <b>00000</b> y te pediremos cambiarlo. ¿Lo olvidaste? Pide al administrador que lo restablezca.</p>`);
+      <p class="hint" style="margin-bottom:0">Si es tu primer ingreso, tu PIN es <b>00000</b> y te pediremos cambiarlo. ¿Lo olvidaste? Pide al administrador que lo restablezca.</p>
+      <button class="btn ghost sm" type="button" id="concod" style="margin-top:8px">Recibir un código por correo</button>`);
     $("#lpin").focus(); soloDigitos($("#lpin"));
     $("#otro").onclick = () => pasoCorreo();
+    $("#concod").onclick = async () => { try{ resultado(await API.ingresar(L.email)); }catch(err){ fallo(err); } };
     $("#f2").onsubmit = async e => { e.preventDefault(); const pin = $("#lpin").value;
       S.pinIngresado = pin;
-      try{ const r = await conBoton($("#b2"), () => API.ingresar(L.email, pin)); if(r.estado!=="ok") S.pinIngresado = null; resultado(r); }catch(err){ S.pinIngresado = null; fallo(err); } };
+      try{ const r = await conBoton($("#b2"), () => API.ingresar(L.email, {pin})); if(r.estado!=="ok") S.pinIngresado = null; resultado(r); }catch(err){ S.pinIngresado = null; fallo(err); } };
+  };
+
+  const pasoCodigo = (r) => {
+    pantallaLogin(`<h1>Revisa tu correo</h1>
+      <p class="muted small" style="margin-top:0">Enviamos un código de 6 dígitos a <b>${esc(L.email)}</b>. Puede tardar un minuto; revisa también el correo no deseado.</p>
+      ${r.error ? `<div class="banner err">${esc(r.error)}</div>` : ""}
+      <form class="grid" style="gap:10px" id="fc">
+        <label class="f">Código<input type="text" id="lcode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required
+          style="font-size:26px;letter-spacing:10px;text-align:center;font-weight:800" placeholder="••••••"></label>
+        <button class="btn pri" type="submit" id="bc">Entrar</button>
+        <div class="row" style="justify-content:space-between"><button class="btn ghost sm" type="button" id="otro">Usar otro correo</button>
+          <button class="btn ghost sm" type="button" id="reenv" disabled>Reenviar código</button></div>
+        ${r.puede_pin ? `<button class="btn sm" type="button" id="conpin">Entrar con mi PIN</button>` : ""}
+      </form>
+      <p class="hint" style="margin-bottom:0">${DEMO ? "Modo demo: el código es <b>123456</b>. " : ""}El código vence en 10 minutos. Solo lo harás una vez en este navegador: la sesión queda guardada hasta que presiones "Salir".</p>`);
+    $("#lcode").focus();
+    $("#lcode").oninput = e => { e.target.value = e.target.value.replace(/\D/g,""); if(e.target.value.length===6) $("#fc").requestSubmit(); };
+    $("#otro").onclick = () => pasoCorreo();
+    $("#conpin") && ($("#conpin").onclick = () => pasoPin());
+    const rb = $("#reenv"); let seg = r.vencido ? 0 : (+r.reenvio_en || 60);
+    const pintarSeg = () => { rb.textContent = seg>0 ? `Reenviar código (${seg}s)` : "Reenviar código"; rb.disabled = seg>0; };
+    pintarSeg(); const tick = setInterval(() => { if(!rb.isConnected) return clearInterval(tick); seg--; pintarSeg(); if(seg<=0) clearInterval(tick); }, 1000);
+    rb.onclick = async () => { try{ const r2 = await conBoton(rb, () => API.ingresar(L.email)); if(r2.estado==="codigo"){ toast("Te enviamos un código nuevo"); pasoCodigo(r2); } else resultado(r2); }catch(err){ fallo(err); } };
+    $("#fc").onsubmit = async e => { e.preventDefault();
+      try{ const r2 = await conBoton($("#bc"), () => API.ingresar(L.email, {codigo:$("#lcode").value.trim()})); resultado(r2); }catch(err){ fallo(err); } };
   };
 
   const pasoSolicitud = () => {
@@ -915,7 +948,7 @@ function pintarApp(silencioso=false){
           <button class="icon-btn solid" id="nuevo">+<span class="hide-sm"> Nueva solicitud</span></button>
           <button class="icon-btn" id="bell" title="Notificaciones">🔔${nN ? `<span class="bell-n">${nN}</span>` : ""}</button>
           ${DEMO ? "" : `<span class="hide-sm">${esc(S.me.nombre || S.me.email)}</span><span class="chip-rol hide-sm">${ROLES[rol()]}</span>`}
-          ${rol()!=="solicitante" ? `<button class="icon-btn hide-sm" id="mipin" title="Cambiar mi PIN">PIN</button>` : ""}
+          ${rol()==="admin" ? `<button class="icon-btn hide-sm" id="mipin" title="Cambiar mi PIN de respaldo">PIN</button>` : ""}
           <button class="icon-btn" id="salir">Salir</button>
         </div>
       </div>
@@ -1368,7 +1401,7 @@ async function vUsuarios(){
   const optRol = sel => Object.entries(ROLES).map(([k,l])=>`<option value="${k}" ${sel===k?"selected":""}>${l}</option>`).join("");
   const doms = S.cfg.dominios || CFG_DEFAULT.dominios;
   $("#main").innerHTML = `
-    <div class="page-h"><div class="grow"><h1>Usuarios</h1><p class="muted small">Los solicitantes entran solo con su correo; los demás roles usan correo + PIN (inicial 00000, se cambia al primer ingreso). Un usuario desactivado no puede entrar.</p></div></div>
+    <div class="page-h"><div class="grow"><h1>Usuarios</h1><p class="muted small">Los solicitantes entran solo con su correo; los demás roles reciben un código de 6 dígitos en su correo (por el flujo de Power Automate). El administrador también puede entrar con su PIN. Si el flujo no está configurado, los roles superiores usan PIN (inicial 00000). Un usuario desactivado no puede entrar.</p></div></div>
     <div id="solic"></div>
     <div class="card" style="margin-bottom:16px">
       <h2>Agregar usuario</h2>
@@ -1386,13 +1419,13 @@ async function vUsuarios(){
       <td>${u.activo?`<span class="tag t-green">Activo</span>`:`<span class="tag t-gray">Inactivo</span>`}</td>
       <td><div class="actions" style="flex-wrap:nowrap"><button class="btn sm usave">Guardar</button>
         <button class="btn sm uact">${u.activo?"Desactivar":"Activar"}</button>
-        ${u.rol!=="solicitante" ? `<button class="btn sm ghost upin" title="Vuelve el PIN a 00000">Restablecer PIN</button>` : ""}</div></td></tr>`).join("")}</tbody></table></div>`;
+        ${u.rol==="admin" || (u.rol!=="solicitante" && !S.cfg.flow_url) ? `<button class="btn sm ghost upin" title="Vuelve el PIN a 00000">Restablecer PIN</button>` : ""}</div></td></tr>`).join("")}</tbody></table></div>`;
   const dominioOk = e => doms.includes(lower(e).split("@")[1]);
   $("#fu").onsubmit = async e => { e.preventDefault();
     const nombre = $("#un").value.trim(), email = lower($("#ue").value), rolSel = $("#ur").value;
     if(!dominioOk(email)) return toast(`Solo correos @${doms.join(" o @")}`, true);
     try{ await conBoton($("#ubtn"), () => API.adminUsuario({accion:"crear", nombre, email, rol:rolSel}));
-      toast(rolSel==="solicitante" ? `${nombre} ya puede entrar con su correo` : `${nombre} ya puede entrar · PIN inicial 00000`); await recargar(); vUsuarios(); }catch(err){ fallo(err); } };
+      toast(rolSel==="solicitante" ? `${nombre} ya puede entrar con su correo` : `${nombre} ya puede entrar · recibirá un código en su correo`); await recargar(); vUsuarios(); }catch(err){ fallo(err); } };
   $$("tr[data-id]").forEach(tr => {
     const id = tr.dataset.id, u = S.usuarios.find(x => x.id===id);
     $(".usave",tr).onclick = async ev => { try{ await conBoton(ev.currentTarget, () => API.guardarUsuario(id, {nombre:$(".unom",tr).value.trim(), rol:$(".urol",tr).value})); toast("Usuario actualizado"); await recargar(); vUsuarios(); }catch(e){ fallo(e); } };
