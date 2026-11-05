@@ -289,7 +289,7 @@ const EVENTOS = {
   manager:"Al solicitante: decisión del manager", aprobacion:"Al aprobador (CEO): solicitud de aprobación",
   decision:"Al solicitante y al manager: decisión del CEO", nuevo:"Al encargado: solicitud asignada a su cola",
   info:"Al solicitante: Pricing necesita información", comentario:"Comentario nuevo (a la otra parte)",
-  cierre:"Al solicitante: ticket cerrado", cierre_manager:"Al manager: ticket cerrado", acceso:"Al administrador: alguien solicita acceso",
+  cierre:"Al solicitante: ticket cerrado", cancelado:"A quien la tenía: el solicitante la canceló", cierre_manager:"Al manager: ticket cerrado", acceso:"Al administrador: alguien solicita acceso",
   bienvenida:"Al usuario nuevo: ya tiene acceso", codigo:"Código de ingreso (no se guarda copia)", prueba:"Correo de prueba"
 };
 const VARIABLES = ["codigo","titulo","tipo","cliente","prioridad","estado","descripcion","solicitante","encargado","vencimiento","eta",
@@ -308,6 +308,7 @@ const CFG_DEFAULT = {
     revision:{asunto:"Solicitud por revisar · {codigo} · {titulo}", cuerpo:"Hola {manager},\n\n{solicitante} envió una solicitud de Pricing que requiere tu revisión:\n\n{codigo} · {titulo}\nTipo: {tipo}\nCliente: {cliente}\nMonto de impacto: {monto}\nDescuento solicitado: {descuento}\nVencimiento: {vencimiento}\n\n{descripcion}\n\nApruébala o recházala aquí:\n{link}"},
     manager:{asunto:"{manager} {decision} tu solicitud {codigo}", cuerpo:"Hola {solicitante},\n\n{manager} {decision} tu solicitud {codigo} · {titulo}.\n\nComentario: {comentario}\n\n{siguiente}\n\n{link}"},
     decision:{asunto:"{aprobacion}: {decision} · {codigo}", cuerpo:"Hola,\n\nLa solicitud {codigo} · {titulo} de {solicitante} fue {decision} por {aprobador}.\n\nComentario: {comentario}\n\n{siguiente}\n\n{link}"},
+    cancelado:{asunto:"Solicitud cancelada · {codigo}", cuerpo:"Hola,\n\n{solicitante} canceló su solicitud {codigo} · {titulo}.\n\nMotivo: {comentario}\n\nYa no requiere ninguna acción de tu parte.\n\n{link}"},
     cierre_manager:{asunto:"Solicitud cerrada · {codigo}: {resultado}", cuerpo:"Hola {manager},\n\nLa solicitud {codigo} · {titulo} de {solicitante} fue cerrada como {resultado} por {encargado}.\n\nTiempo de ejecución: {horas} h\n\nResolución:\n{resolucion}\n\n{link}"},
     info:{asunto:"Pricing necesita información · {codigo}", cuerpo:"Hola {solicitante},\n\nPara continuar con tu solicitud {codigo} · {titulo}, el equipo de Pricing necesita información adicional. Revisa los comentarios y responde en el ticket:\n{link}"},
     comentario:{asunto:"Nuevo comentario en {codigo}", cuerpo:"{autor} comentó en {codigo} · {titulo}:\n\n{comentario}\n\n{link}"},
@@ -440,6 +441,7 @@ const API_SB = {
   async correosLog(){ return chk(await sb.from("pricing_notificaciones").select("id,evento,para_email,asunto,correo,error_envio,created_at").order("id",{ascending:false}).limit(25)); },
   async crear(t){ return chk(await sb.from("pricing_tickets").insert(t).select().single()); },
   async actualizar(id, c){ return chk(await sb.from("pricing_tickets").update(c).eq("id", id).select().single()); },
+  async cancelar(id, motivo){ return uno(chk(await sb.rpc("pricing_cancelar",{p_ticket:id, p_motivo:motivo||null}))); },
   async revisar(id, dec, ceo, com){ return uno(chk(await sb.rpc("pricing_revisar",{p_ticket:id, p_decision:dec, p_requiere_ceo:!!ceo, p_comentario:com||null}))); },
   async solicitarAprob(id, nota){ return uno(chk(await sb.rpc("pricing_solicitar_aprobacion",{p_ticket:id, p_nota:nota||null}))); },
   async resolverAprob(id, dec, com){ return uno(chk(await sb.rpc("pricing_resolver_aprobacion",{p_ticket:id, p_decision:dec, p_comentario:com||null}))); },
@@ -637,6 +639,18 @@ const API_DEMO = {
     Demo.notificar(row, "recibido", row.solicitante_email);
     if(row.manager_email) Demo.notificar(row, "revision", row.manager_email); else Demo.notificar(row, "nuevo", row.asignado_email);
     Demo.save(); return clon(row);
+  },
+  async cancelar(id, motivo){
+    const t = Demo.t(id), antes = clon(t), mot = (motivo||"").trim() || null;
+    if(t.cerrado_at) throw new Error("La solicitud ya está cerrada");
+    Demo.cambio(t, {estado:"Cancelado", manager_estado:t.manager_estado==="Pendiente"?"No aplica":t.manager_estado, aprob_estado:t.aprob_estado==="Pendiente"?"No aplica":t.aprob_estado});
+    Object.assign(t, {cerrado_at:Demo.ahora(), cerrado_por:S.me.email, resolucion:"Cancelada por el solicitante" + (mot ? ": "+mot : ".")});
+    Demo.log(id, "Cancelación", null, null, "Cancelado", mot);
+    const ex = {comentario:mot||"—"};
+    if(antes.manager_estado==="Pendiente") Demo.notificar(t, "cancelado", antes.manager_email, ex);
+    if(antes.aprob_estado==="Pendiente") Demo.notificar(t, "cancelado", antes.aprob_email, ex);
+    if(ABIERTOS_EDIT.includes(antes.estado)) Demo.notificar(t, "cancelado", antes.asignado_email, ex);
+    Demo.save(); return clon(t);
   },
   async revisar(id, dec, ceo, com){
     const t = Demo.t(id), cfg = Demo.db.cfg, ap = cfg.aprobacion; com = (com||"").trim() || null;
@@ -1038,7 +1052,7 @@ function vMis(){
         <div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span>${tagEstado(t.estado)}${tagAprob(t)}</div>
         <div class="b" style="margin-top:4px">${esc(t.titulo)}</div>
         <div class="sub">${esc(tipoTxt(t))} · enviada ${hace(t.created_at)}${t.fecha_eta?` · fecha estimada <b>${fFecha(t.fecha_eta)}</b>`:""}</div></div>
-        <span class="btn sm">Ver detalle</span></div>
+        <div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn sm ghost" data-cancel="${t.id}" style="color:var(--brick)">Cancelar</button><span class="btn sm">Ver detalle</span></div></div>
       <div class="body">${pos}<div>${msg}${pasos(t)}</div></div></div>`;
   };
   $("#main").innerHTML = `
@@ -1052,6 +1066,9 @@ function vMis(){
         <td>${tagEstado(t.estado)}</td><td class="small" style="max-width:380px">${esc(t.resolucion||"—")}</td><td class="small num">${fFecha(t.cerrado_at)}</td><td class="r num">${diasEntre(t.created_at, t.cerrado_at)}</td></tr>`).join("")}</tbody></table></div>`
       : `<div class="muted small">Aún no tienes solicitudes cerradas.</div>`}`;
   $$("[data-open]").forEach(el => el.onclick = () => abrirDetalle(+el.dataset.open));
+  $$("[data-cancel]").forEach(b => b.onclick = async ev => { ev.stopPropagation(); const t = S.tickets.find(x => x.id===+b.dataset.cancel);
+    const m = prompt(`¿Cancelar ${t.codigo}? Puedes indicar el motivo (opcional):`, ""); if(m===null) return;
+    try{ await conBoton(b, () => API.cancelar(t.id, m)); toast(`${t.codigo} cancelada`); await refrescar(); }catch(e){ fallo(e); } });
   $("#mis-nueva").onclick = abrirNuevo; $("#mis-nueva2") && ($("#mis-nueva2").onclick = e => { e.preventDefault(); abrirNuevo(); });
 }
 
@@ -1679,6 +1696,10 @@ async function abrirDetalle(id){
     acciones = `<div class="actions" style="margin-top:12px"><button class="btn" id="a_reabrir">Reabrir ticket</button></div>`;
   }
 
+  if(!cerrado && (esMio(t) || rol()==="admin")){
+    acciones += `<div class="actions" style="margin-top:12px"><button class="btn ghost" id="a_cancelar" style="color:var(--brick);border-color:var(--brick)">Cancelar solicitud</button></div>`;
+  }
+
   // Bloque de cierre
   const cierre = cerrado ? `<div class="box ${t.estado==="Completado"?"ok":t.estado==="Rechazado"?"no":""}"><h3>${esc(t.estado)}</h3>
     <div class="small">Por <b>${esc(nombreDe(t.cerrado_por))}</b> el ${fFechaHora(t.cerrado_at)} · ${diasEntre(t.created_at, t.cerrado_at)} días${t.horas_ejecucion!=null?` · tiempo de ejecución <b>${fHoras(t.horas_ejecucion)}</b>`:""}</div>
@@ -1757,6 +1778,9 @@ async function abrirDetalle(id){
     try{ await API.actualizar(id, c); toast("Cambios guardados"); await recargarDetalle(); }catch(err){ fallo(err); }
   });
   $("#a_cerrar") && ($("#a_cerrar").onclick = () => abrirCierre(id));
+  $("#a_cancelar") && ($("#a_cancelar").onclick = async ev => {
+    const m = prompt(`¿Cancelar ${t.codigo}? Puedes indicar el motivo (opcional):`, ""); if(m===null) return;
+    try{ await conBoton(ev.currentTarget, () => API.cancelar(id, m)); toast(`${t.codigo} cancelada`); await recargarDetalle(); }catch(e){ fallo(e); } });
   $("#a_reabrir") && ($("#a_reabrir").onclick = async () => { const m = prompt("Motivo para reabrir el ticket:"); if(!m) return;
     try{ await API.reabrir(id, m); toast("Ticket reabierto"); await recargarDetalle(); }catch(e){ fallo(e); } });
   $("#a_aprob") && ($("#a_aprob").onclick = async ev => { const nota = prompt(`Nota para ${ap.nombre || "el aprobador"} (opcional):`, ""); if(nota===null) return;
@@ -1798,6 +1822,7 @@ function evento(b){
     case "Decisión de aprobación": cls = b.valor_nuevo==="Aprobado" ? "c" : "r"; txt = `<b>${esc(b.valor_nuevo)}</b> · ${esc(aprobTitulo())}`; break;
     case "Cierre": cls="c"; txt = `Cerró el ticket: <b>${esc(b.valor_nuevo)}</b>`; break;
     case "Reapertura": cls="a"; txt = "Reabrió el ticket"; break;
+    case "Cancelación": cls="r"; txt = "Canceló la solicitud"; break;
     case "Adjunto": txt = `Adjuntó <b>${esc(b.valor_nuevo)}</b>`; break;
     default: txt = esc(b.accion);
   }
