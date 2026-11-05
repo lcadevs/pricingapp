@@ -262,7 +262,7 @@ td.r,th.r{text-align:right}
 /* =====================================================================
    Catálogos
    ===================================================================== */
-const TIPOS = [
+let TIPOS = [   // se reemplaza por los tipos de Configuración → Formulario
   "Análisis para reposicionamiento de precios",
   "Análisis especiales de precios y paquetes de venta",
   "Propuestas de precios para estrategias marketing",
@@ -293,8 +293,10 @@ const EVENTOS = {
   bienvenida:"Al usuario nuevo: ya tiene acceso", codigo:"Código de ingreso (no se guarda copia)", prueba:"Correo de prueba"
 };
 const VARIABLES = ["codigo","titulo","tipo","cliente","prioridad","estado","descripcion","solicitante","encargado","vencimiento","eta",
-  "monto","descuento","horas","resolucion","resultado","aprobacion","aprobador","manager","nota","comentario","decision","siguiente","autor","persona","correo","codigo_acceso","link"];
+  "monto","descuento","horas","resolucion","resultado","aprobacion","aprobador","manager","nota","comentario","decision","siguiente","autor","persona","correo","codigo_acceso","detalle","link"];
+const TIPOS_CAMPO = {texto:"Texto corto", parrafo:"Párrafo", numero:"Número", fecha:"Fecha", lista:"Lista de opciones", si_no:"Sí / No"};
 const CFG_DEFAULT = {
+  formulario:{tipos:TIPOS.map(n => ({nombre:n, activo:true, campos:[]}))},
   aprobacion:{titulo:"Aprobación CEO", nombre:"", cargo:"CEO", email:""},
   revision:{default_email:"", por_tipo:{}},     // manager que revisa
   asignacion:{default_email:"", por_tipo:{}},   // encargado que atiende
@@ -303,9 +305,9 @@ const CFG_DEFAULT = {
   app:{app_url:"", dias_alerta:3, dias_aprob_demora:2, dias_venc_default:7},
   plantillas:{
     recibido:{asunto:"Recibimos tu solicitud {codigo}", cuerpo:"Hola {solicitante},\n\nRecibimos tu solicitud de Pricing:\n\n{codigo} · {titulo}\nTipo: {tipo}\n\nPuedes ver su avance y tu posición en la cola aquí:\n{link}"},
-    nuevo:{asunto:"Nueva solicitud {codigo} · {titulo}", cuerpo:"Hola {encargado},\n\nSe te asignó una nueva solicitud de Pricing.\n\n{codigo} · {titulo}\nTipo: {tipo}\nCliente: {cliente}\nPrioridad: {prioridad}\nVencimiento: {vencimiento}\nSolicitado por: {solicitante}\n\n{descripcion}"},
-    aprobacion:{asunto:"{aprobacion} requerida · {codigo} · {titulo}", cuerpo:"Hola {aprobador},\n\nSe requiere tu aprobación para la siguiente solicitud de Pricing:\n\n{codigo} · {titulo}\nTipo: {tipo}\nCliente: {cliente}\nMonto de impacto: {monto}\nDescuento solicitado: {descuento}\nVencimiento: {vencimiento}\nSolicitado por: {solicitante}\n\nNota: {nota}\n\nRevisa y aprueba o rechaza aquí:\n{link}"},
-    revision:{asunto:"Solicitud por revisar · {codigo} · {titulo}", cuerpo:"Hola {manager},\n\n{solicitante} envió una solicitud de Pricing que requiere tu revisión:\n\n{codigo} · {titulo}\nTipo: {tipo}\nCliente: {cliente}\nMonto de impacto: {monto}\nDescuento solicitado: {descuento}\nVencimiento: {vencimiento}\n\n{descripcion}\n\nApruébala o recházala aquí:\n{link}"},
+    nuevo:{asunto:"Nueva solicitud {codigo} · {titulo}", cuerpo:"Hola {encargado},\n\nSe te asignó una nueva solicitud de Pricing.\n\n{codigo} · {titulo}\nTipo: {tipo}\nPrioridad: {prioridad}\nLa necesita para: {vencimiento}\nSolicitado por: {solicitante}\n{detalle}\n\n{descripcion}\n\n{link}"},
+    aprobacion:{asunto:"{aprobacion} requerida · {codigo} · {titulo}", cuerpo:"Hola {aprobador},\n\nSe requiere tu aprobación para la siguiente solicitud de Pricing:\n\n{codigo} · {titulo}\nTipo: {tipo}\nLa necesita para: {vencimiento}\nSolicitado por: {solicitante}\n{detalle}\n\n{descripcion}\n\nNota del manager: {nota}\n\nRevisa y aprueba o rechaza aquí:\n{link}"},
+    revision:{asunto:"Solicitud por revisar · {codigo} · {titulo}", cuerpo:"Hola {manager},\n\n{solicitante} envió una solicitud de Pricing que requiere tu revisión:\n\n{codigo} · {titulo}\nTipo: {tipo}\nLa necesita para: {vencimiento}\n{detalle}\n\n{descripcion}\n\nApruébala o recházala aquí:\n{link}"},
     manager:{asunto:"{manager} {decision} tu solicitud {codigo}", cuerpo:"Hola {solicitante},\n\n{manager} {decision} tu solicitud {codigo} · {titulo}.\n\nComentario: {comentario}\n\n{siguiente}\n\n{link}"},
     decision:{asunto:"{aprobacion}: {decision} · {codigo}", cuerpo:"Hola,\n\nLa solicitud {codigo} · {titulo} de {solicitante} fue {decision} por {aprobador}.\n\nComentario: {comentario}\n\n{siguiente}\n\n{link}"},
     cancelado:{asunto:"Solicitud cancelada · {codigo}", cuerpo:"Hola,\n\n{solicitante} canceló su solicitud {codigo} · {titulo}.\n\nMotivo: {comentario}\n\nYa no requiere ninguna acción de tu parte.\n\n{link}"},
@@ -401,6 +403,35 @@ function tagAprob(t){
   return `<span class="tag ${c}">${esc(S.cfg.aprobacion.cargo || "Aprobación")}: ${esc(t.aprob_estado)}</span>`;
 }
 const tagPrio = p => `<span class="tag ${({Urgente:"t-brick",Alta:"t-olive",Media:"t-slate",Baja:"t-gray"})[p]}">${esc(p)}</span>`;
+const tiposActivos = () => (S.cfg.formulario?.tipos || []).filter(x => x.activo !== false).map(x => x.nombre);
+const camposDe = tipo => ((S.cfg.formulario?.tipos || []).find(x => x.nombre===tipo)?.campos) || [];
+function campoInput(c, val, pre){
+  const id = `${pre}_${c.id}`, req = c.obligatorio ? "required" : "", v = val ?? "";
+  let input;
+  if(c.tipo==="parrafo") input = `<textarea id="${id}" rows="3" ${req}>${esc(v)}</textarea>`;
+  else if(c.tipo==="numero") input = `<input type="number" step="any" id="${id}" value="${esc(v)}" ${req}>`;
+  else if(c.tipo==="fecha") input = `<input type="date" id="${id}" value="${esc(v)}" ${req}>`;
+  else if(c.tipo==="lista") input = `<select id="${id}" ${req}><option value="">— Selecciona —</option>${(c.opciones||[]).map(o => `<option ${o===v?"selected":""}>${esc(o)}</option>`).join("")}</select>`;
+  else if(c.tipo==="si_no") input = `<select id="${id}" ${req}><option value="">— Selecciona —</option>${["Sí","No"].map(o => `<option ${o===v?"selected":""}>${o}</option>`).join("")}</select>`;
+  else input = `<input type="text" id="${id}" value="${esc(v)}" ${req}>`;
+  return `<label class="f ${c.tipo==="parrafo"?"full":""}">${esc(c.etiqueta)}${c.obligatorio?" *":""}${input}</label>`;
+}
+const camposHTML = (tipo, datos, pre) => camposDe(tipo).map(c => campoInput(c, (datos||{})[c.id], pre)).join("");
+function leerCampos(tipo, pre, base={}){
+  const d = {...base};
+  for(const c of camposDe(tipo)){ const el = $(`#${pre}_${c.id}`); if(!el) continue; const v = el.value.trim();
+    if(c.obligatorio && !v) throw new Error(`Completa el campo "${c.etiqueta}"`); if(v) d[c.id] = v; else delete d[c.id]; }
+  return d;
+}
+function detalleKV(t){
+  const fila = (l, v) => `<dt>${esc(l)}</dt><dd style="white-space:pre-wrap">${esc(v)}</dd>`;
+  let h = camposDe(t.tipo).filter(c => (t.datos||{})[c.id]).map(c => fila(c.etiqueta, t.datos[c.id])).join("");
+  // Datos de solicitudes creadas antes del formulario configurable
+  if(t.cliente) h += fila("Cliente", t.cliente);
+  if(t.monto_impacto!=null) h += fila("Monto de impacto", fNum(t.monto_impacto)+" "+(t.moneda||""));
+  if(t.descuento_pct!=null) h += fila("Descuento", fNum(t.descuento_pct)+" %");
+  return h;
+}
 const tipoTxt = t => t.tipo==="Otros" && t.tipo_otro ? `Otros · ${t.tipo_otro}` : t.tipo;
 
 /* =====================================================================
@@ -477,7 +508,7 @@ const API_SB = {
    Capa de datos · MODO DEMO (localStorage; imita las reglas de la base)
    ===================================================================== */
 const Demo = {
-  key:"pricing_desk_demo_v3", db:null,
+  key:"pricing_desk_demo_v4", db:null,
   seed(){
     let s = 7; const rnd = () => (s = (s*16807) % 2147483647) / 2147483647;
     const pick = a => a[Math.floor(rnd()*a.length)];
@@ -498,6 +529,10 @@ const Demo = {
     cfg.asignacion = {default_email:"encargado.pricing@legrand.com", por_tipo:{}};
     cfg.revision = {default_email:"manager.pricing@legrand.com", por_tipo:{}};
     cfg.dominios = ["legrand.com","legrand-ext.com"];
+    cfg.formulario = {tipos: TIPOS.map(n => ({nombre:n, activo:true, campos: n===TIPOS[6] ? [
+      {id:"cliente", etiqueta:"Cliente", tipo:"texto", obligatorio:true},
+      {id:"descuento", etiqueta:"Descuento solicitado %", tipo:"numero", obligatorio:true},
+      {id:"motivo", etiqueta:"Motivo del descuento", tipo:"lista", opciones:["Competencia","Volumen","Proyecto especial","Otro"], obligatorio:false}] : []}))};
     const T = [], B = [], H = [], h = hoy();
     let id = 0;
     // Histórico cerrado de los últimos ~6 meses
@@ -561,7 +596,8 @@ const Demo = {
       monto:t.monto_impacto!=null?fNum(t.monto_impacto)+" "+t.moneda:"—", descuento:t.descuento_pct!=null?t.descuento_pct+" %":"—", horas:t.horas_ejecucion??"—",
       resolucion:t.resolucion||"", resultado:t.estado, link:app+"?ticket="+t.codigo} : {link:app};
     Object.assign(v, {aprobacion:ap.titulo||"Aprobación", aprobador:ap.nombre||"", manager:t&&t.manager_email?nom(t.manager_email):"el manager de Pricing",
-      nota:"—", comentario:"—", decision:"", siguiente:"", autor:""}, extra);
+      nota:"—", comentario:"—", decision:"", siguiente:"", autor:"",
+      detalle: t ? camposDe(t.tipo).filter(c => (t.datos||{})[c.id]).map(c => `${c.etiqueta}: ${t.datos[c.id]}`).join("\n") : ""}, extra);
     this.db.notifs.unshift({id:++this.db.seq.n, ticket_id:t?.id||null, codigo:t?.codigo||null, evento, para_email:lower(para),
       asunto:renderTpl(pl.asunto,v), cuerpo_texto:renderTpl(pl.cuerpo,v), leida:false, correo:this.db.cfg.flow_url?"Enviado (demo)":"Sin flujo", created_at:this.ahora()});
   },
@@ -624,9 +660,10 @@ const API_DEMO = {
   async correosLog(){ return clon(Demo.db.notifs.slice(0,25)); },
   async crear(t){
     const id = ++Demo.db.seq.t, now = Demo.ahora(), cfg = Demo.db.cfg;
+    for(const c of camposDe(t.tipo)) if(c.obligatorio && !String((t.datos||{})[c.id]||"").trim()) throw new Error(`Completa el campo "${c.etiqueta}"`);
     const regla = k => lower(((cfg[k]||{}).por_tipo||{})[t.tipo] || (cfg[k]||{}).default_email) || null;
     const row = {tipo_otro:null, descripcion:"", cliente:"", linea_producto:"", fecha_vencimiento:null, monto_impacto:null, moneda:"USD",
-      descuento_pct:null, prioridad:"Media", ...t, id, codigo:"PRC-"+String(id).padStart(5,"0"), fecha_eta:null, asignado_email:null,
+      descuento_pct:null, prioridad:"Media", datos:{}, ...t, id, codigo:"PRC-"+String(id).padStart(5,"0"), fecha_eta:null, asignado_email:null,
       solicitante_id:S.user.id, solicitante_email:S.me.email,
       requiere_aprobacion:false, aprob_email:null, aprob_estado:"No aplica", aprob_comentario:null, aprob_enviado_at:null, aprob_resuelto_at:null, aprob_resuelto_por:null,
       manager_email:regla("revision"), manager_comentario:null, manager_resuelto_at:null, manager_resuelto_por:null,
@@ -771,8 +808,10 @@ async function recargar(){
   S.cfg = structuredClone(CFG_DEFAULT);
   for(const k in cfg){ S.cfg[k] = (cfg[k] && typeof cfg[k]==="object" && !Array.isArray(cfg[k])) ? {...(CFG_DEFAULT[k]||{}), ...cfg[k]} : cfg[k]; }
   S.cfg.plantillas = {...CFG_DEFAULT.plantillas, ...(cfg.plantillas||{})};
+  if(!S.cfg.formulario || !Array.isArray(S.cfg.formulario.tipos) || !S.cfg.formulario.tipos.length) S.cfg.formulario = structuredClone(CFG_DEFAULT.formulario);
+  TIPOS = S.cfg.formulario.tipos.map(x => x.nombre);
   const [t, cola, n, h] = await Promise.all([API.tickets(), API.miCola(), API.notifs(), API.horas()]);
-  S.tickets = t || []; S.cola = cola || []; S.notifs = n || []; S.horas = h || [];
+  S.tickets = t || []; S.tickets.forEach(x => { if(x.tipo && !TIPOS.includes(x.tipo)) TIPOS.push(x.tipo); }); S.cola = cola || []; S.notifs = n || []; S.horas = h || [];
 }
 if(!DEMO){
   sb.auth.onAuthStateChange(ev => { if(ev==="SIGNED_IN" && !S.me) iniciar(); if(ev==="SIGNED_OUT"){ S.me=null; S.user=null; pintarLogin(); } });
@@ -1164,7 +1203,7 @@ function tablaTickets(lista, cerrada=false){
     ${cerrada ? `<th>Cerrado</th><th class="r">Días</th><th class="r">Horas</th>` : `<th>ETA</th><th>Vence</th><th></th>`}
     </tr></thead><tbody>${lista.map(t => `<tr class="click" data-open="${t.id}">
       <td class="code">${esc(t.codigo)}</td>
-      <td><div class="b">${esc(t.titulo)}</div><div class="sub">${esc(tipoTxt(t))}${t.cliente?` · ${esc(t.cliente)}`:""}</div></td>
+      <td><div class="b">${esc(t.titulo)}</div><div class="sub">${esc(tipoTxt(t))}</div></td>
       <td class="small">${esc(nombreDe(t.solicitante_email))}</td><td>${tagPrio(t.prioridad)}</td><td>${tagEstado(t.estado)} ${tagAprob(t)}</td>
       <td class="small">${esc(t.asignado_email ? nombreDe(t.asignado_email) : "Sin asignar")}</td>
       ${cerrada ? `<td class="small num">${fFecha(t.cerrado_at)}</td><td class="r num">${t.cerrado_at?diasEntre(t.created_at,t.cerrado_at):"—"}</td><td class="r num">${t.horas_ejecucion!=null?fNum(t.horas_ejecucion,2):"—"}</td>`
@@ -1212,13 +1251,13 @@ function filaReporte(t){
     if(!cerr) sla = t.fecha_vencimiento < h ? "Vencido" : t.fecha_vencimiento <= sumarDias(h, +S.cfg.app.dias_alerta||3) ? "Por vencer" : "En plazo";
     else sla = dia(t.cerrado_at) > t.fecha_vencimiento ? "Cerrado fuera de plazo" : "Cerrado en plazo";
   }
-  return {origen:"Pricing especial", numero:t.codigo, tipo_solicitud:t.tipo, tipo_detalle:t.tipo_otro||"", titulo:t.titulo, cliente:t.cliente||"",
-    linea_producto:t.linea_producto||"", prioridad:t.prioridad, estado:t.estado, estado_general:cerr?"Cerrado":"Abierto",
+  return {origen:"Pricing especial", numero:t.codigo, tipo_solicitud:t.tipo, tipo_detalle:t.tipo_otro||"", titulo:t.titulo,
+    prioridad:t.prioridad, estado:t.estado, estado_general:cerr?"Cerrado":"Abierto",
     solicitante_email:t.solicitante_email||"", asignado_email:t.asignado_email||"", cerrado_por:t.cerrado_por||"",
     fecha_solicitud:dia(t.created_at), fecha_eta:t.fecha_eta||"", fecha_vencimiento:t.fecha_vencimiento||"", fecha_cierre:cerr?dia(t.cerrado_at):"",
     dias_abierto:diasEntre(t.created_at, cerr?t.cerrado_at:h), estado_sla:sla, horas_ejecucion:t.horas_ejecucion??"",
     requiere_aprobacion:t.requiere_aprobacion?"Sí":"No", aprob_estado:t.aprob_estado, aprob_email:t.aprob_email||"",
-    monto_impacto:t.monto_impacto??"", moneda:t.moneda||"", descuento_pct:t.descuento_pct??""};
+    campos_formulario: camposDe(t.tipo).filter(c => (t.datos||{})[c.id]).map(c => `${c.etiqueta}: ${t.datos[c.id]}`).join(" | ")};
 }
 function exportarCSV(filas, nombre){
   if(!filas.length) return toast("No hay filas para exportar", true);
@@ -1365,8 +1404,7 @@ function vRevision(){
         <div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span>${tagPrio(t.prioridad)}${tagAlerta(alertaDe(t))}<span class="sub grow">recibida ${hace(t.created_at)}${lower(t.manager_email)!==S.me.email?` · para ${esc(nombreDe(t.manager_email))}`:""}</span></div>
         <h2 style="margin:6px 0 2px">${esc(t.titulo)}</h2>
         <div class="sub" style="margin-bottom:10px">${esc(tipoTxt(t))} · solicitado por ${esc(nombreDe(t.solicitante_email))}</div>
-        <dl class="kv"><dt>Cliente</dt><dd>${esc(t.cliente||"—")}</dd><dt>Monto de impacto</dt><dd>${t.monto_impacto!=null?fNum(t.monto_impacto)+" "+esc(t.moneda||""):"—"}</dd>
-          <dt>Descuento</dt><dd>${t.descuento_pct!=null?fNum(t.descuento_pct)+" %":"—"}</dd><dt>La necesita para</dt><dd>${fFecha(t.fecha_vencimiento)}</dd></dl>
+        <dl class="kv"><dt>La necesita para</dt><dd>${fFecha(t.fecha_vencimiento)}</dd>${detalleKV(t)}</dl>
         ${t.descripcion?`<div class="desc" style="margin-top:10px">${esc(t.descripcion)}</div>`:""}
         <label class="f" style="margin-top:12px">Comentario (obligatorio si rechazas; lo verá el solicitante)<textarea data-rcom="${t.id}" rows="2"></textarea></label>
         ${ap.email ? `<label class="check" style="margin-top:10px"><input type="checkbox" data-rceo="${t.id}"> Requiere ${esc(ap.titulo)}${ap.nombre?` (${esc(ap.nombre)})`:""}</label>` : `<div class="hint" style="margin-top:8px">No hay aprobador configurado: al aprobar pasa directo al encargado.</div>`}
@@ -1398,8 +1436,7 @@ function vAprobaciones(){
         <div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span>${tagPrio(t.prioridad)}${tagAlerta(alertaDe(t))}<span class="sub grow">enviada ${hace(t.aprob_enviado_at)}${lower(t.aprob_email)!==S.me.email?` · para ${esc(nombreDe(t.aprob_email))}`:""}</span></div>
         <h2 style="margin:6px 0 2px">${esc(t.titulo)}</h2>
         <div class="sub" style="margin-bottom:10px">${esc(tipoTxt(t))} · solicitado por ${esc(nombreDe(t.solicitante_email))}</div>
-        <dl class="kv"><dt>Cliente</dt><dd>${esc(t.cliente||"—")}</dd><dt>Monto de impacto</dt><dd>${t.monto_impacto!=null?fNum(t.monto_impacto)+" "+esc(t.moneda||""):"—"}</dd>
-          <dt>Descuento</dt><dd>${t.descuento_pct!=null?fNum(t.descuento_pct)+" %":"—"}</dd><dt>Vencimiento</dt><dd>${fFecha(t.fecha_vencimiento)}</dd></dl>
+        <dl class="kv"><dt>La necesita para</dt><dd>${fFecha(t.fecha_vencimiento)}</dd>${detalleKV(t)}</dl>
         ${t.descripcion?`<div class="desc" style="margin-top:10px">${esc(t.descripcion)}</div>`:""}
         <label class="f" style="margin-top:12px">Comentario (obligatorio si rechazas)<textarea data-com="${t.id}" rows="2"></textarea></label>
         <div class="actions" style="margin-top:10px"><button class="btn pri" data-ok="${t.id}">Aprobar</button><button class="btn danger" data-no="${t.id}">Rechazar</button><button class="btn ghost" data-open="${t.id}">Ver ticket completo</button></div>
@@ -1522,6 +1559,11 @@ async function vConfig(){
         <tbody>${TIPOS.map((tp,i) => `<tr><td>${esc(tp)}</td><td><select data-mtp="${i}">${optU(revisores, (rv.por_tipo||{})[tp], "Usar el predeterminado")}</select></td><td><select data-tp="${i}">${optU(atienden, (as.por_tipo||{})[tp], "Usar el predeterminado")}</select></td></tr>`).join("")}</tbody></table></div>
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn pri" id="g_as">Guardar flujo</button></div></div>
 
+    <div class="card" style="margin-top:14px" id="form-card"><h2>Formulario por tipo de solicitud</h2>
+      <p class="hint" style="margin-top:-6px">Todas las solicitudes piden tipo, título, descripción, prioridad y la fecha en que se necesitan. Aquí agregas los campos propios de cada tipo; también los verán el manager y el CEO y llegan en los correos (variable <code>{detalle}</code>).</p>
+      <div class="grid" style="grid-template-columns:minmax(220px,300px) minmax(0,1fr);gap:16px" id="fe"></div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px"><span class="hint grow" id="fe-sucio"></span><button class="btn pri" id="g_form">Guardar formulario</button></div></div>
+
     <div class="card" style="margin-top:14px"><h2>Plantillas de correo</h2>
       <div class="form">
         <label class="f full">Evento<select id="c_ev">${Object.entries(EVENTOS).map(([k,l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select></label>
@@ -1552,6 +1594,60 @@ async function vConfig(){
     $$("[data-mtp]").forEach(s => { if(s.value) mpor[TIPOS[+s.dataset.mtp]] = s.value; });
     try{ await API.guardarConfig("revision", {default_email:$("#c_mdef").value, por_tipo:mpor}); S.cfg.revision = {default_email:$("#c_mdef").value, por_tipo:mpor}; }catch(err){ return fallo(err); }
     await guardar(e.currentTarget, "asignacion", {default_email:$("#c_def").value, por_tipo:por}); };
+  // ---- Editor del formulario
+  const F = structuredClone(S.cfg.formulario || CFG_DEFAULT.formulario); let sel = 0, sucio = false;
+  const marcar = () => { sucio = true; $("#fe-sucio").textContent = "Cambios sin guardar"; };
+  const slug = t => (lower(t).normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"") || "campo").slice(0,30);
+  const pintarFE = () => {
+    const tp = F.tipos[sel];
+    $("#fe").innerHTML = `
+      <div>
+        <div class="bars" style="gap:4px">${F.tipos.map((x,i) => `<button class="btn sm ${i===sel?"pri":""}" data-ft="${i}" style="justify-content:space-between;width:100%;text-align:left">
+          <span class="ell" style="${x.activo===false?"text-decoration:line-through;opacity:.6":""}">${esc(x.nombre)}</span><span class="muted" style="${i===sel?"color:#fff":""}">${(x.campos||[]).length}</span></button>`).join("")}</div>
+        <div class="row" style="margin-top:10px;flex-wrap:nowrap"><input type="text" id="fe-nt" placeholder="Nuevo tipo de solicitud"><button class="btn sm" id="fe-add-t">Agregar</button></div>
+      </div>
+      <div>${tp ? `
+        <div class="row" style="margin-bottom:10px"><h3 class="grow" style="margin:0">${esc(tp.nombre)}</h3>
+          <label class="check small"><input type="checkbox" id="fe-act" ${tp.activo!==false?"checked":""}> Disponible para nuevas solicitudes</label></div>
+        ${(tp.campos||[]).length ? `<div class="tbl-wrap"><table><thead><tr><th>Campo</th><th>Tipo</th><th>Opciones (lista)</th><th>Obligatorio</th><th></th></tr></thead><tbody>
+          ${tp.campos.map((c,i) => `<tr data-fc="${i}">
+            <td><input type="text" class="fc-et" value="${esc(c.etiqueta)}"></td>
+            <td style="min-width:170px"><select class="fc-tp">${Object.entries(TIPOS_CAMPO).map(([k,l]) => `<option value="${k}" ${c.tipo===k?"selected":""}>${l}</option>`).join("")}</select></td>
+            <td><input type="text" class="fc-op" value="${esc((c.opciones||[]).join(", "))}" placeholder="Opción 1, Opción 2" ${c.tipo==="lista"?"":"disabled"}></td>
+            <td><label class="check"><input type="checkbox" class="fc-ob" ${c.obligatorio?"checked":""}></label></td>
+            <td><div class="actions" style="flex-wrap:nowrap"><button class="btn sm fc-up" title="Subir">▲</button><button class="btn sm fc-dn" title="Bajar">▼</button><button class="btn sm fc-del" title="Quitar" style="color:var(--brick)">✕</button></div></td></tr>`).join("")}
+          </tbody></table></div>` : `<div class="muted small" style="padding:8px 0">Este tipo no tiene campos propios.</div>`}
+        <div class="row" style="margin-top:10px"><button class="btn sm" id="fe-add-c">+ Agregar campo</button></div>
+        <h3 style="margin:16px 0 8px">Vista previa</h3><div class="box"><div class="form">${(tp.campos||[]).map(c => campoInput(c, "", "prev")).join("") || `<span class="muted small">Sin campos adicionales.</span>`}</div></div>` : ""}
+      </div>`;
+    $$("[data-ft]").forEach(b => b.onclick = () => { sel = +b.dataset.ft; pintarFE(); });
+    $("#fe-add-t").onclick = () => { const n = $("#fe-nt").value.trim(); if(!n) return;
+      if(F.tipos.some(x => lower(x.nombre)===lower(n))) return toast("Ese tipo ya existe", true);
+      F.tipos.push({nombre:n, activo:true, campos:[]}); sel = F.tipos.length-1; marcar(); pintarFE(); };
+    if(!tp) return;
+    $("#fe-act").onchange = e => { tp.activo = e.target.checked; marcar(); pintarFE(); };
+    $("#fe-add-c").onclick = () => { tp.campos = tp.campos || []; let base = "campo", id = base, k = 2; const ids = new Set(tp.campos.map(c => c.id));
+      while(ids.has(id)) id = base + "_" + k++; tp.campos.push({id, etiqueta:"Nuevo campo", tipo:"texto", obligatorio:false}); marcar(); pintarFE(); };
+    $$("[data-fc]").forEach(tr => { const i = +tr.dataset.fc, c = tp.campos[i];
+      $(".fc-et",tr).onchange = e => { c.etiqueta = e.target.value.trim() || "Campo";
+        if(/^campo(_\d+)?$/.test(c.id)){ let id = slug(c.etiqueta), k = 2, b = id; while(tp.campos.some((x,j) => j!==i && x.id===id)) id = b + "_" + k++; c.id = id; }
+        marcar(); pintarFE(); };
+      $(".fc-tp",tr).onchange = e => { c.tipo = e.target.value; if(c.tipo!=="lista") delete c.opciones; marcar(); pintarFE(); };
+      $(".fc-op",tr).onchange = e => { c.opciones = e.target.value.split(",").map(x => x.trim()).filter(Boolean); marcar(); pintarFE(); };
+      $(".fc-ob",tr).onchange = e => { c.obligatorio = e.target.checked; marcar(); pintarFE(); };
+      $(".fc-up",tr).onclick = () => { if(i>0){ [tp.campos[i-1], tp.campos[i]] = [tp.campos[i], tp.campos[i-1]]; marcar(); pintarFE(); } };
+      $(".fc-dn",tr).onclick = () => { if(i<tp.campos.length-1){ [tp.campos[i+1], tp.campos[i]] = [tp.campos[i], tp.campos[i+1]]; marcar(); pintarFE(); } };
+      $(".fc-del",tr).onclick = () => { if(!confirm(`¿Quitar el campo "${c.etiqueta}"? Lo ya respondido en solicitudes anteriores se conserva, pero deja de mostrarse.`)) return; tp.campos.splice(i,1); marcar(); pintarFE(); };
+    });
+  };
+  pintarFE();
+  $("#g_form").onclick = async e => {
+    if(!F.tipos.some(x => x.activo!==false)) return toast("Debe quedar al menos un tipo disponible", true);
+    const malas = F.tipos.flatMap(x => (x.campos||[]).filter(c => c.tipo==="lista" && !(c.opciones||[]).length).map(c => `${x.nombre} → ${c.etiqueta}`));
+    if(malas.length) return toast(`Agrega opciones a la lista: ${malas[0]}`, true);
+    await guardar(e.currentTarget, "formulario", F); TIPOS = F.tipos.map(x => x.nombre); sucio = false; $("#fe-sucio").textContent = "";
+  };
+
   const cargarTpl = () => { const p = S.cfg.plantillas[$("#c_ev").value] || {asunto:"",cuerpo:""}; $("#c_as").value = p.asunto||""; $("#c_cu").value = p.cuerpo||""; };
   $("#c_ev").onchange = cargarTpl; cargarTpl();
   let ultimo = $("#c_cu"); $("#c_as").onfocus = () => ultimo = $("#c_as"); $("#c_cu").onfocus = () => ultimo = $("#c_cu");
@@ -1584,30 +1680,25 @@ function abrirNuevo(){
   modal(`
     <div class="modal-h"><div><h1>Nueva solicitud de Pricing</h1><div class="muted small">Para solicitudes que no son SPA, SPE ni SDE.</div></div><button class="x">×</button></div>
     <form class="form" id="fnuevo">
-      <label class="f full">Tipo de solicitud<select id="ntipo" required>${TIPOS.map(x=>`<option>${esc(x)}</option>`).join("")}</select></label>
+      <label class="f full">Tipo de solicitud<select id="ntipo" required>${tiposActivos().map(x=>`<option>${esc(x)}</option>`).join("")}</select></label>
       <label class="f full hidden" id="notro-w">Especifica el tipo<input type="text" id="notro"></label>
       <label class="f full">Título<input type="text" id="ntit" required maxlength="160" placeholder="Resumen corto de la solicitud"></label>
       <label class="f full">Descripción y justificación<textarea id="ndesc" rows="4" placeholder="Contexto, alcance, condiciones comerciales, competencia…"></textarea></label>
-      <label class="f">Cliente / canal<input type="text" id="ncli"></label>
-      <label class="f">Línea de producto<input type="text" id="nlin"></label>
       <label class="f">Prioridad sugerida<select id="nprio">${PRIORIDADES.map(x=>`<option ${x==="Media"?"selected":""}>${x}</option>`).join("")}</select></label>
       <label class="f">La necesito para<input type="date" id="nven" value="${sumarDias(hoy(), +S.cfg.app.dias_venc_default||7)}"></label>
-      <label class="f">Monto de impacto estimado<input type="number" id="nmon" step="0.01" min="0"></label>
-      <label class="f">Moneda<select id="nmoneda">${MONEDAS.map(m=>`<option>${m}</option>`).join("")}</select></label>
-      <label class="f">Descuento solicitado %<input type="number" id="ndpct" step="0.01" min="0" max="100"></label>
-      <div></div>
+      <div class="full form" id="ncampos" style="padding:0"></div>
       <div class="full hint">Tu solicitud pasará primero por la revisión del manager${mgr?` (${esc(nombreDe(mgr))})`:""}; te avisaremos cada avance.</div>
       <div class="full row" style="justify-content:flex-end"><button type="button" class="btn" id="ncancel">Cancelar</button><button class="btn pri" type="submit" id="ncrear">Enviar solicitud</button></div>
     </form>`);
   $("#ncancel").onclick = cerrarModal;
-  $("#ntipo").onchange = () => $("#notro-w").classList.toggle("hidden", $("#ntipo").value!=="Otros");
+  const pintarCampos = () => { $("#notro-w").classList.toggle("hidden", $("#ntipo").value!=="Otros"); $("#ncampos").innerHTML = camposHTML($("#ntipo").value, {}, "nc"); };
+  $("#ntipo").onchange = pintarCampos; pintarCampos();
   $("#fnuevo").onsubmit = async e => {
     e.preventDefault();
     const num = v => v==="" ? null : Number(v);
     const t = {tipo:$("#ntipo").value, tipo_otro:$("#ntipo").value==="Otros" ? $("#notro").value.trim()||null : null,
-      titulo:$("#ntit").value.trim(), descripcion:$("#ndesc").value.trim(), cliente:$("#ncli").value.trim()||null,
-      linea_producto:$("#nlin").value.trim()||null, prioridad:$("#nprio").value, fecha_vencimiento:$("#nven").value||null,
-      monto_impacto:num($("#nmon").value), moneda:$("#nmoneda").value, descuento_pct:num($("#ndpct").value)};
+      titulo:$("#ntit").value.trim(), descripcion:$("#ndesc").value.trim(), prioridad:$("#nprio").value, fecha_vencimiento:$("#nven").value||null};
+    try{ t.datos = leerCampos(t.tipo, "nc"); }catch(err){ return toast(err.message, true); }
     try{
       await conBoton($("#ncrear"), async () => {
         const nuevo = await API.crear(t);
@@ -1665,12 +1756,9 @@ async function abrirDetalle(id){
       <label class="f">Prioridad<select id="e_prioridad">${PRIORIDADES.map(x=>`<option ${t.prioridad===x?"selected":""}>${x}</option>`).join("")}</select></label>
       <label class="f">Asignado a<select id="e_asignado_email">${opcionesAtienden(t.asignado_email)}</select></label>
       <label class="f">Fecha ETA (estimada de entrega)<input type="date" id="e_fecha_eta" value="${v("fecha_eta","")}"></label>` : ""}
-      <label class="f">Tipo<select id="e_tipo">${TIPOS.map(x=>`<option ${t.tipo===x?"selected":""}>${esc(x)}</option>`).join("")}</select></label>
-      <label class="f">Vencimiento<input type="date" id="e_fecha_vencimiento" value="${v("fecha_vencimiento","")}"></label>
-      <label class="f">Cliente / canal<input type="text" id="e_cliente" value="${esc(v("cliente",""))}"></label>
-      <label class="f">Línea de producto<input type="text" id="e_linea_producto" value="${esc(v("linea_producto",""))}"></label>
-      <label class="f">Monto de impacto<input type="number" step="0.01" id="e_monto_impacto" value="${v("monto_impacto","")}"></label>
-      <label class="f">Descuento %<input type="number" step="0.01" id="e_descuento_pct" value="${v("descuento_pct","")}"></label>
+      <label class="f">Tipo<select id="e_tipo">${[...new Set([t.tipo, ...tiposActivos()])].map(x=>`<option ${t.tipo===x?"selected":""}>${esc(x)}</option>`).join("")}</select></label>
+      <label class="f">La necesita para<input type="date" id="e_fecha_vencimiento" value="${v("fecha_vencimiento","")}"></label>
+      ${camposHTML(t.tipo, t.datos, "ec")}
       <label class="f full">Título<input type="text" id="e_titulo" value="${esc(t.titulo)}"></label>
       <label class="f full">Descripción<textarea id="e_descripcion" rows="4">${esc(v("descripcion",""))}</textarea></label>
       <div class="full row" style="justify-content:flex-end"><button class="btn" type="submit">Guardar cambios</button></div>
@@ -1678,10 +1766,8 @@ async function abrirDetalle(id){
   } else {
     campos = `<dl class="kv">
       <dt>Prioridad</dt><dd>${tagPrio(t.prioridad)}</dd><dt>Asignado a</dt><dd>${esc(t.asignado_email?nombreDe(t.asignado_email):"Equipo de Pricing")}</dd>
-      <dt>Cliente</dt><dd>${esc(v("cliente"))}</dd><dt>Línea</dt><dd>${esc(v("linea_producto"))}</dd>
-      <dt>Fecha estimada (ETA)</dt><dd>${fFecha(t.fecha_eta)}</dd><dt>Vencimiento</dt><dd>${fFecha(t.fecha_vencimiento)}</dd>
-      <dt>Impacto</dt><dd>${t.monto_impacto!=null?fNum(t.monto_impacto)+" "+esc(t.moneda||""):"—"}</dd>
-      <dt>Descuento</dt><dd>${t.descuento_pct!=null?fNum(t.descuento_pct)+" %":"—"}</dd></dl>
+      <dt>Fecha estimada (ETA)</dt><dd>${fFecha(t.fecha_eta)}</dd><dt>La necesita para</dt><dd>${fFecha(t.fecha_vencimiento)}</dd>
+      ${detalleKV(t)}</dl>
       ${t.descripcion ? `<h3 style="margin-top:12px">Descripción</h3><div class="desc">${esc(t.descripcion)}</div>` : ""}`;
   }
 
@@ -1767,7 +1853,8 @@ async function abrirDetalle(id){
 
   $("#fedit") && ($("#fedit").onsubmit = async e => {
     e.preventDefault(); const c = {};
-    for(const k of ["estado","prioridad","asignado_email","fecha_eta","tipo","fecha_vencimiento","cliente","linea_producto","monto_impacto","descuento_pct","titulo","descripcion"]){
+    try{ const d = leerCampos(t.tipo, "ec", t.datos||{}); if(JSON.stringify(d)!==JSON.stringify(t.datos||{})) c.datos = d; }catch(err){ return toast(err.message, true); }
+    for(const k of ["estado","prioridad","asignado_email","fecha_eta","tipo","fecha_vencimiento","titulo","descripcion"]){
       const el = $("#e_"+k); if(!el || el.disabled) continue;
       let val = el.value.trim(); if(el.type==="number") val = val==="" ? null : Number(val); else if(val==="") val = null;
       const cur = t[k]==null || t[k]==="" ? null : (el.type==="number" ? Number(t[k]) : String(t[k]));
