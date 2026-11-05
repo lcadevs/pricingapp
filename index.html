@@ -783,6 +783,8 @@ function pinError(p){   // mismas reglas que la base de datos
   return null;
 }
 
+let loginOcupado = false;          // evita enviar el mismo código o PIN dos veces
+async function unaVez(fn){ if(loginOcupado) return null; loginOcupado = true; try{ return await fn(); } finally { loginOcupado = false; } }
 function pintarLogin(){
   const L = {email: (() => { try{ return localStorage.getItem("pricing_ultimo_correo") || ""; }catch(e){ return ""; } })()};
 
@@ -803,12 +805,14 @@ function pintarLogin(){
     $("#f1").onsubmit = async e => {
       e.preventDefault(); L.email = lower($("#lemail").value);
       try{ localStorage.setItem("pricing_ultimo_correo", L.email); }catch(err){}
-      try{ resultado(await conBoton($("#b1"), () => API.ingresar(L.email))); }catch(err){ fallo(err); }
+      try{ resultado(await unaVez(() => conBoton($("#b1"), () => API.ingresar(L.email)))); }catch(err){ fallo(err); }
     };
   };
 
-  const resultado = r => {
+  const resultado = async r => {
+    if(!r) return;                                   // petición repetida: se ignora
     if(r.estado==="ok") return iniciar();
+    try{ if(S.me || await API.sesion()) return iniciar(); }catch(e){}   // ya entró con la petición anterior
     if(r.estado==="pin") return pasoPin(r.error);
     if(r.estado==="codigo") return pasoCodigo(r);
     if(r.estado==="no_registrado") return pasoSolicitud();
@@ -834,7 +838,7 @@ function pintarLogin(){
     $("#concod").onclick = async () => { try{ resultado(await API.ingresar(L.email)); }catch(err){ fallo(err); } };
     $("#f2").onsubmit = async e => { e.preventDefault(); const pin = $("#lpin").value;
       S.pinIngresado = pin;
-      try{ const r = await conBoton($("#b2"), () => API.ingresar(L.email, {pin})); if(r.estado!=="ok") S.pinIngresado = null; resultado(r); }catch(err){ S.pinIngresado = null; fallo(err); } };
+      try{ const r = await unaVez(() => conBoton($("#b2"), () => API.ingresar(L.email, {pin}))); if(r && r.estado!=="ok") S.pinIngresado = null; resultado(r); }catch(err){ S.pinIngresado = null; fallo(err); } };
   };
 
   const pasoCodigo = (r) => {
@@ -851,15 +855,15 @@ function pintarLogin(){
       </form>
       <p class="hint" style="margin-bottom:0">${DEMO ? "Modo demo: el código es <b>123456</b>. " : ""}El código vence en 10 minutos. Solo lo harás una vez en este navegador: la sesión queda guardada hasta que presiones "Salir".</p>`);
     $("#lcode").focus();
-    $("#lcode").oninput = e => { e.target.value = e.target.value.replace(/\D/g,""); if(e.target.value.length===6) $("#fc").requestSubmit(); };
+    $("#lcode").oninput = e => { e.target.value = e.target.value.replace(/\D/g,""); if(e.target.value.length===6 && !loginOcupado) $("#fc").requestSubmit(); };
     $("#otro").onclick = () => pasoCorreo();
     $("#conpin") && ($("#conpin").onclick = () => pasoPin());
     const rb = $("#reenv"); let seg = r.vencido ? 0 : (+r.reenvio_en || 60);
     const pintarSeg = () => { rb.textContent = seg>0 ? `Reenviar código (${seg}s)` : "Reenviar código"; rb.disabled = seg>0; };
     pintarSeg(); const tick = setInterval(() => { if(!rb.isConnected) return clearInterval(tick); seg--; pintarSeg(); if(seg<=0) clearInterval(tick); }, 1000);
-    rb.onclick = async () => { try{ const r2 = await conBoton(rb, () => API.ingresar(L.email)); if(r2.estado==="codigo"){ toast("Te enviamos un código nuevo"); pasoCodigo(r2); } else resultado(r2); }catch(err){ fallo(err); } };
+    rb.onclick = async () => { try{ const r2 = await unaVez(() => conBoton(rb, () => API.ingresar(L.email))); if(!r2) return; if(r2.estado==="codigo"){ toast("Te enviamos un código nuevo"); pasoCodigo(r2); } else resultado(r2); }catch(err){ fallo(err); } };
     $("#fc").onsubmit = async e => { e.preventDefault();
-      try{ const r2 = await conBoton($("#bc"), () => API.ingresar(L.email, {codigo:$("#lcode").value.trim()})); resultado(r2); }catch(err){ fallo(err); } };
+      try{ const r2 = await unaVez(() => conBoton($("#bc"), () => API.ingresar(L.email, {codigo:$("#lcode").value.trim()}))); resultado(r2); }catch(err){ fallo(err); } };
   };
 
   const pasoSolicitud = () => {
