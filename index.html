@@ -1,0 +1,1675 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pricing Desk</title>
+
+<!-- =====================================================================
+     CONFIGURACIÓN  (lo único que se edita aquí; el resto se configura
+     desde la pestaña Configuración de la app, como administrador)
+     Supabase Dashboard → Project Settings → API
+     Si SUPABASE_URL queda vacío (""), la app arranca en MODO DEMO.
+     ===================================================================== -->
+<script>
+const CONFIG = {
+  SUPABASE_URL: "https://iecfgpqnnsxmnmbxnfcp.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_Mt2sdPIzEcfbKv15x4-JTQ_Tf6csjiH",   // clave publishable (es pública por diseño)
+  ADMIN_FUNCTION: "pricing-admin",  // nombre de la Edge Function de usuarios
+  LOGIN_FUNCTION: "pricing-login"   // nombre de la Edge Function de ingreso
+};
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+
+<style>
+/* Paleta corporativa Legrand (Management Summary) */
+:root{
+  --green:#14564A; --green-600:#1B6B5D; --green-50:#E6F0ED; --green-100:#CFE3DD;
+  --slate:#45616C; --slate-50:#EBF0F2; --slate-200:#C9D5DA;
+  --brick:#B33A2B; --brick-50:#F7E7E4;
+  --olive:#8A7B1F; --olive-50:#F3F0DE;
+  --bg:#F3F5F4; --surface:#FFFFFF; --surface-2:#F8FAF9; --line:#E1E7E5;
+  --ink:#16211F; --ink-2:#4A5A57; --ink-3:#7C8B88;
+  --shadow:0 1px 2px rgba(20,40,36,.06),0 4px 16px rgba(20,40,36,.06);
+  --shadow-lg:0 10px 40px rgba(10,30,26,.22);
+  --r:14px; --r-sm:10px; color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --green:#3FA38F; --green-600:#52B29E; --green-50:#16302B; --green-100:#1D3F38;
+    --slate:#8FA9B3; --slate-50:#1D2A2F; --slate-200:#34474E; --brick:#E0725F; --brick-50:#3A1F1B;
+    --olive:#C9B64A; --olive-50:#2E2A14;
+    --bg:#0E1413; --surface:#161E1C; --surface-2:#1B2422; --line:#27332F;
+    --ink:#E9EFED; --ink-2:#B3C1BD; --ink-3:#82928E;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25); color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --green:#3FA38F; --green-600:#52B29E; --green-50:#16302B; --green-100:#1D3F38;
+  --slate:#8FA9B3; --slate-50:#1D2A2F; --slate-200:#34474E; --brick:#E0725F; --brick-50:#3A1F1B;
+  --olive:#C9B64A; --olive-50:#2E2A14;
+  --bg:#0E1413; --surface:#161E1C; --surface-2:#1B2422; --line:#27332F;
+  --ink:#E9EFED; --ink-2:#B3C1BD; --ink-3:#82928E;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25); color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);font-size:14.5px;line-height:1.45;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+a{color:var(--green)}
+.hidden{display:none!important}
+.muted{color:var(--ink-3)} .small{font-size:12.5px} .num{font-variant-numeric:tabular-nums} .b{font-weight:700}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap} .grow{flex:1;min-width:0}
+.ell{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Barra superior */
+.top{background:var(--green);color:#fff;position:sticky;top:0;z-index:20}
+.top-in{max-width:1320px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:12px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:.2px;white-space:nowrap}
+.brand .logo{background:#fff;color:var(--green);border-radius:8px;padding:3px 8px;font-size:13px;font-weight:800}
+.brand small{font-weight:500;opacity:.8}
+.top .user{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:13px}
+.chip-rol{background:rgba(255,255,255,.16);padding:3px 9px;border-radius:99px;font-size:12px;white-space:nowrap}
+.icon-btn{background:rgba(255,255,255,.12);border:0;color:#fff;border-radius:10px;padding:7px 10px;position:relative;white-space:nowrap}
+.icon-btn:hover{background:rgba(255,255,255,.22)}
+.icon-btn.solid{background:#fff;color:var(--green);font-weight:700}
+.bell-n{position:absolute;top:-5px;right:-5px;background:var(--brick);color:#fff;border-radius:99px;font-size:11px;min-width:18px;height:18px;display:grid;place-items:center;padding:0 4px;font-weight:700}
+.top select.demo-sw{background:rgba(255,255,255,.12);color:#fff;border:0;border-radius:10px;padding:6px 8px;font-size:12.5px}
+.top select.demo-sw option{color:#16211F}
+.tabs{max-width:1320px;margin:0 auto;padding:0 12px;display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+.tab{background:none;border:0;color:rgba(255,255,255,.75);padding:10px 14px;border-bottom:3px solid transparent;font-weight:600;white-space:nowrap}
+.tab.on{color:#fff;border-bottom-color:#fff}
+.tab .n{background:var(--brick);color:#fff;border-radius:99px;padding:0 6px;font-size:11px;margin-left:4px}
+
+main{max-width:1320px;margin:0 auto;padding:18px 16px 70px}
+h1{font-size:20px;margin:0 0 4px} h2{font-size:15.5px;margin:0 0 10px} h3{font-size:14px;margin:0 0 8px}
+.page-h{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.page-h p{margin:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:16px}
+.card.flat{box-shadow:none}
+.grid{display:grid;gap:14px}
+.kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.kpi{border-radius:var(--r);padding:13px 15px;color:#fff;box-shadow:var(--shadow);border:0;text-align:left}
+button.kpi{cursor:pointer} button.kpi:hover{filter:brightness(1.07)}
+.kpi .v{font-size:26px;font-weight:800;line-height:1.1}
+.kpi .l{font-size:12.5px;opacity:.92}
+.k-green{background:var(--green)} .k-slate{background:var(--slate)} .k-brick{background:var(--brick)} .k-olive{background:var(--olive)}
+.two{grid-template-columns:1.35fr 1fr} .halves{grid-template-columns:1fr 1fr}
+@media (max-width:1000px){.two,.halves{grid-template-columns:1fr}}
+
+/* Botones y formularios */
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:var(--r-sm);padding:8px 14px;font-weight:600;display:inline-flex;align-items:center;gap:6px;justify-content:center}
+.btn:hover{border-color:var(--ink-3)}
+.btn.pri{background:var(--green);border-color:var(--green);color:#fff} .btn.pri:hover{background:var(--green-600)}
+.btn.danger{background:var(--brick);border-color:var(--brick);color:#fff}
+.btn.olive{background:var(--olive);border-color:var(--olive);color:#fff}
+.btn.ghost{background:transparent}
+.btn.sm{padding:5px 10px;font-size:13px}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--ink-2);font-weight:600;min-width:0}
+input[type=text],input[type=email],input[type=password],input[type=date],input[type=number],input[type=search],input[type=url],select,textarea{
+  border:1px solid var(--line);background:var(--surface);border-radius:var(--r-sm);padding:8px 10px;font-size:14px;font-weight:500;color:var(--ink);width:100%;min-width:0}
+textarea{resize:vertical;min-height:70px}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--green-100);border-color:var(--green)}
+input:disabled,select:disabled,textarea:disabled{background:var(--surface-2);color:var(--ink-3)}
+.form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.form .full{grid-column:1/-1}
+@media (max-width:640px){.form{grid-template-columns:1fr}}
+.check{display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer}
+.check input{width:18px;height:18px;accent-color:var(--green)}
+.seg{display:inline-flex;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);padding:3px;gap:2px}
+.seg button{border:0;background:none;padding:6px 12px;border-radius:8px;font-weight:600;color:var(--ink-2)}
+.seg button.on{background:var(--green);color:#fff}
+.hint{font-size:12.5px;color:var(--ink-3)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12px;background:var(--surface-2);border:1px solid var(--line);border-radius:99px;padding:2px 8px;font-family:ui-monospace,Consolas,monospace;cursor:pointer}
+
+/* Filtros y tabla */
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-bottom:12px}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th{text-align:left;font-size:12px;color:var(--ink-3);font-weight:700;text-transform:uppercase;letter-spacing:.3px;padding:10px 12px;background:var(--surface-2);border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+tbody tr.click{cursor:pointer} tbody tr.click:hover{background:var(--surface-2)}
+td.r,th.r{text-align:right}
+.code{font-weight:800;color:var(--green);white-space:nowrap}
+.sub{font-size:12px;color:var(--ink-3)}
+
+/* Etiquetas */
+.tag{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:700;white-space:nowrap}
+.t-green{background:var(--green-50);color:var(--green)} .t-slate{background:var(--slate-50);color:var(--slate)}
+.t-brick{background:var(--brick-50);color:var(--brick)} .t-olive{background:var(--olive-50);color:var(--olive)}
+.t-gray{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
+
+/* Cola de atención */
+.queue{display:flex;flex-direction:column;gap:8px}
+.qi{display:grid;grid-template-columns:28px 38px minmax(0,1fr) auto;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;box-shadow:var(--shadow)}
+.qi:hover{border-color:var(--slate-200)}
+.qi .hd{cursor:grab;color:var(--ink-3);font-size:18px;text-align:center;user-select:none;touch-action:none}
+.qi .pos{width:34px;height:34px;border-radius:50%;background:var(--slate-50);color:var(--slate);display:grid;place-items:center;font-weight:800;font-size:14px}
+.qi.first .pos{background:var(--green);color:#fff}
+.qi .main{cursor:pointer;min-width:0}
+.qi .tt{font-weight:700}
+.qi .meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:3px}
+.qi .side{display:flex;align-items:center;gap:6px}
+.qi .mv{display:flex;flex-direction:column;gap:2px}
+.qi .mv button{border:1px solid var(--line);background:var(--surface);border-radius:6px;width:26px;height:20px;font-size:10px;line-height:1;color:var(--ink-2);padding:0}
+.qi.ghost{opacity:.4} .qi.chosen{box-shadow:var(--shadow-lg);border-color:var(--green)}
+@media (max-width:640px){.qi{grid-template-columns:22px 32px minmax(0,1fr)} .qi .side{grid-column:3;justify-content:flex-start}}
+
+/* Mis solicitudes: posición en la cola */
+.mine{display:grid;gap:14px}
+.mcard{background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}
+.mcard .hdr{padding:14px 16px;display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+.mcard .body{padding:0 16px 16px;display:grid;grid-template-columns:240px minmax(0,1fr);gap:18px;align-items:center}
+@media (max-width:760px){.mcard .body{grid-template-columns:1fr}}
+.posbox{background:var(--green-50);border-radius:14px;padding:14px;text-align:center}
+.posbox .big{font-size:40px;font-weight:800;color:var(--green);line-height:1}
+.posbox .of{font-size:13px;color:var(--ink-2);margin-top:4px}
+.posbox.wait{background:var(--olive-50)} .posbox.wait .big{color:var(--olive);font-size:24px}
+.track{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:6px 0 10px}
+.dot{width:14px;height:14px;border-radius:50%;background:var(--slate-200)}
+.dot.work{background:var(--slate)}
+.dot.me{width:30px;height:30px;background:var(--green);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center;box-shadow:0 0 0 4px var(--green-100);animation:pulse 1.8s ease-in-out infinite}
+.dot.after{background:transparent;border:2px dashed var(--line)}
+.dots-more{font-size:12px;font-weight:700;color:var(--ink-3)}
+@keyframes pulse{50%{box-shadow:0 0 0 8px transparent}}
+.steps{display:flex;gap:0;margin-top:6px}
+.step{flex:1;text-align:center;position:relative;font-size:11.5px;color:var(--ink-3);font-weight:600}
+.step::before{content:"";position:absolute;top:9px;left:-50%;width:100%;height:3px;background:var(--line);z-index:0}
+.step:first-child::before{display:none}
+.step .c{width:20px;height:20px;border-radius:50%;background:var(--surface);border:3px solid var(--line);margin:0 auto 4px;position:relative;z-index:1}
+.step.done{color:var(--green)} .step.done .c{background:var(--green);border-color:var(--green)} .step.done::before{background:var(--green)}
+.step.now{color:var(--ink)} .step.now .c{border-color:var(--green);background:var(--green-50)} .step.now::before{background:var(--green)}
+.step.warn .c{border-color:var(--olive);background:var(--olive-50)}
+
+/* Gráficos */
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart .gl{stroke:var(--line);stroke-width:1}
+.chart .ax{fill:var(--ink-3);font-size:11px}
+.chart .vl{fill:var(--ink-2);font-size:11px;font-weight:700}
+.chart rect.hit{fill:transparent} .chart g.col:hover rect.bar,.chart g.col:hover path.bar{opacity:.82}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-2);margin-bottom:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.bars{display:flex;flex-direction:column;gap:9px}
+.bar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;font-size:13px}
+.bar .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+.bar .trk{grid-column:1/-1;height:8px;background:var(--surface-2);border-radius:99px;overflow:hidden;margin-top:-4px}
+.bar .fil{height:100%;background:var(--green);border-radius:99px}
+.bar .val{text-align:right;font-weight:700;white-space:nowrap}
+.split{display:flex;height:14px;border-radius:99px;overflow:hidden;gap:2px;background:var(--surface)}
+.split div{height:100%}
+
+/* Modal */
+.ov{position:fixed;inset:0;background:rgba(10,25,22,.45);z-index:50;display:flex;align-items:flex-start;justify-content:center;padding:4vh 12px;overflow-y:auto}
+.modal{background:var(--surface);border-radius:18px;box-shadow:var(--shadow-lg);width:100%;max-width:720px;padding:20px}
+.modal.wide{max-width:1100px} .modal.narrow{max-width:520px}
+.modal-h{display:flex;align-items:flex-start;gap:10px;margin-bottom:14px}
+.x{margin-left:auto;background:none;border:0;font-size:22px;line-height:1;color:var(--ink-3)}
+.det{display:grid;grid-template-columns:1.25fr 1fr;gap:16px}
+@media (max-width:900px){.det{grid-template-columns:1fr}}
+.box{border:1px solid var(--line);border-radius:var(--r);padding:14px;background:var(--surface-2)}
+.box.ap{border-color:var(--olive);background:var(--olive-50)}
+.box.ok{border-color:var(--green);background:var(--green-50)}
+.box.no{border-color:var(--brick);background:var(--brick-50)}
+.kv{display:grid;grid-template-columns:140px 1fr;gap:6px 10px;font-size:13.5px;margin:0}
+.kv dt{color:var(--ink-3);font-weight:600} .kv dd{margin:0}
+.desc{white-space:pre-wrap;font-size:13.5px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* Bitácora */
+.tl{display:flex;flex-direction:column;max-height:440px;overflow-y:auto;padding-right:4px}
+.ev{display:grid;grid-template-columns:14px 1fr;gap:10px;padding:8px 0}
+.ev .dt{width:10px;height:10px;border-radius:50%;background:var(--slate);margin-top:5px}
+.ev.c .dt{background:var(--green)} .ev.a .dt{background:var(--olive)} .ev.r .dt{background:var(--brick)}
+.ev .who{font-size:12px;color:var(--ink-3)} .ev .txt{font-size:13.5px}
+.ev .cm{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px 10px;margin-top:4px;white-space:pre-wrap;font-size:13px}
+
+/* Notificaciones */
+.np{position:fixed;top:58px;right:12px;width:min(390px,calc(100vw - 24px));max-height:70vh;overflow-y:auto;background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-lg);z-index:40;color:var(--ink)}
+.np .it{padding:10px 14px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13px}
+.np .it:hover{background:var(--surface-2)} .np .it.unread{background:var(--green-50)}
+
+/* Login */
+.login{min-height:100vh;display:grid;place-items:center;padding:16px;background:linear-gradient(160deg,var(--green) 0%,var(--slate) 100%)}
+.login .card{max-width:420px;width:100%;padding:26px}
+.demo-users{display:grid;gap:8px;margin-top:10px}
+
+.alert-line{display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.alert-line:last-child{border-bottom:0}
+.empty{padding:26px;text-align:center;color:var(--ink-3)}
+.banner{background:var(--olive-50);border:1px solid var(--olive);color:var(--ink);border-radius:var(--r);padding:10px 14px;margin-bottom:14px;font-size:13.5px}
+.banner.err{background:var(--brick-50);border-color:var(--brick)}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:10px 18px;border-radius:12px;z-index:90;box-shadow:var(--shadow-lg);font-weight:600;font-size:13.5px;max-width:92vw}
+.toast.err{background:var(--brick);color:#fff}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (max-width:760px){.hide-sm{display:none!important} .brand small{display:none}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="np-root"></div>
+<div id="modal-root"></div>
+
+<script>
+/* =====================================================================
+   Catálogos
+   ===================================================================== */
+const TIPOS = [
+  "Análisis para reposicionamiento de precios",
+  "Análisis especiales de precios y paquetes de venta",
+  "Propuestas de precios para estrategias marketing",
+  "Análisis de precios para introducción",
+  "Ajustes en listas de precios",
+  "Revisión de precios",
+  "Autorización para aplicar descuentos de política o adicionales",
+  "Otros"
+];
+const ABIERTOS_EDIT = ["Nuevo","En análisis","En espera de información"];
+const CERRADOS = ["Completado","Rechazado","Cancelado"];
+const ESTADOS = [...ABIERTOS_EDIT, "Pendiente aprobación", ...CERRADOS];
+const PRIORIDADES = ["Baja","Media","Alta","Urgente"];
+const MONEDAS = ["USD","CRC","MXN","EUR"];
+const ROLES = {solicitante:"Solicitante", encargado:"Encargado Pricing", manager:"Manager Pricing", aprobador:"Aprobador", admin:"Administrador"};
+const CAMPOS = {tipo:"Tipo", tipo_otro:"Detalle tipo", titulo:"Título", descripcion:"Descripción", cliente:"Cliente",
+  linea_producto:"Línea de producto", prioridad:"Prioridad", estado:"Estado", asignado_email:"Asignado a",
+  fecha_eta:"ETA", fecha_vencimiento:"Vencimiento", monto_impacto:"Monto de impacto", moneda:"Moneda",
+  descuento_pct:"Descuento %", requiere_aprobacion:"Requiere aprobación", aprob_email:"Aprobador",
+  aprob_estado:"Estado de aprobación", horas_ejecucion:"Horas de ejecución"};
+const EVENTOS = {
+  recibido:"Al solicitante: recibimos su solicitud", nuevo:"Al encargado: nueva solicitud asignada",
+  aprobacion:"Al aprobador: solicitud de aprobación", decision:"Al solicitante y encargado: decisión del aprobador",
+  info:"Al solicitante: Pricing necesita información", comentario:"Comentario nuevo (a la otra parte)",
+  cierre:"Al solicitante: ticket cerrado", acceso:"Al administrador: alguien solicita acceso",
+  bienvenida:"Al usuario nuevo: ya tiene acceso", prueba:"Correo de prueba"
+};
+const VARIABLES = ["codigo","titulo","tipo","cliente","prioridad","estado","descripcion","solicitante","encargado","vencimiento","eta",
+  "monto","descuento","horas","resolucion","resultado","aprobacion","aprobador","nota","comentario","decision","autor","persona","correo","link"];
+const CFG_DEFAULT = {
+  aprobacion:{titulo:"Aprobación CEO", nombre:"", cargo:"CEO", email:""},
+  asignacion:{default_email:"", por_tipo:{}},
+  flow_url:"",
+  dominios:["legrand.com","legrand-ext.com"],
+  app:{app_url:"", dias_alerta:3, dias_aprob_demora:2, dias_venc_default:7},
+  plantillas:{
+    recibido:{asunto:"Recibimos tu solicitud {codigo}", cuerpo:"Hola {solicitante},\n\nRecibimos tu solicitud de Pricing:\n\n{codigo} · {titulo}\nTipo: {tipo}\n\nPuedes ver su avance y tu posición en la cola aquí:\n{link}"},
+    nuevo:{asunto:"Nueva solicitud {codigo} · {titulo}", cuerpo:"Hola {encargado},\n\nSe te asignó una nueva solicitud de Pricing.\n\n{codigo} · {titulo}\nTipo: {tipo}\nCliente: {cliente}\nPrioridad: {prioridad}\nVencimiento: {vencimiento}\nSolicitado por: {solicitante}\n\n{descripcion}"},
+    aprobacion:{asunto:"{aprobacion} requerida · {codigo} · {titulo}", cuerpo:"Hola {aprobador},\n\nSe requiere tu aprobación para la siguiente solicitud de Pricing:\n\n{codigo} · {titulo}\nTipo: {tipo}\nCliente: {cliente}\nMonto de impacto: {monto}\nDescuento solicitado: {descuento}\nVencimiento: {vencimiento}\nSolicitado por: {solicitante}\n\nNota: {nota}\n\nRevisa y aprueba o rechaza aquí:\n{link}"},
+    decision:{asunto:"{aprobacion}: {decision} · {codigo}", cuerpo:"Hola,\n\nLa solicitud {codigo} · {titulo} fue {decision} por {aprobador}.\n\nComentario: {comentario}\n\n{link}"},
+    info:{asunto:"Pricing necesita información · {codigo}", cuerpo:"Hola {solicitante},\n\nPara continuar con tu solicitud {codigo} · {titulo}, el equipo de Pricing necesita información adicional. Revisa los comentarios y responde en el ticket:\n{link}"},
+    comentario:{asunto:"Nuevo comentario en {codigo}", cuerpo:"{autor} comentó en {codigo} · {titulo}:\n\n{comentario}\n\n{link}"},
+    cierre:{asunto:"Tu solicitud {codigo} fue cerrada: {resultado}", cuerpo:"Hola {solicitante},\n\nTu solicitud {codigo} · {titulo} fue cerrada como {resultado}.\n\nResolución:\n{resolucion}\n\nAtendida por: {encargado}\n\n{link}"},
+    acceso:{asunto:"Solicitud de acceso a Pricing Desk: {persona}", cuerpo:"{persona} ({correo}) solicita acceso a Pricing Desk.\n\nMotivo: {comentario}\n\nApruébalo o descártalo en la pestaña Usuarios:\n{link}"},
+    bienvenida:{asunto:"Ya tienes acceso a Pricing Desk", cuerpo:"Hola {persona},\n\nYa puedes entrar a Pricing Desk con tu correo {correo}. Si tu rol usa PIN, el inicial es 00000 y te pediremos cambiarlo.\n\n{link}"},
+    prueba:{asunto:"Prueba de correo · Pricing Desk", cuerpo:"Este es un correo de prueba enviado desde la configuración de Pricing Desk."}
+  }
+};
+
+/* =====================================================================
+   Utilidades
+   ===================================================================== */
+const $ = (s, el=document) => el.querySelector(s);
+const $$ = (s, el=document) => [...el.querySelectorAll(s)];
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pad = n => String(n).padStart(2,"0");
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const hoy = () => ymd(new Date());
+const sumarDias = (s, n) => { const d = new Date(s+"T12:00:00"); d.setDate(d.getDate()+n); return ymd(d); };
+const dia = s => s ? String(s).slice(0,10) : null;          // fecha (YYYY-MM-DD) de un timestamp
+const fFecha = s => { if(!s) return "—"; const d = new Date(String(s).length===10 ? s+"T12:00:00" : s);
+  return d.toLocaleDateString("es-CR",{day:"2-digit",month:"short",year:"numeric"}); };
+const fFechaHora = s => s ? new Date(s).toLocaleString("es-CR",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "—";
+const fNum = (n, dec=2) => n==null || n==="" || isNaN(n) ? "—" : Number(n).toLocaleString("es-CR",{minimumFractionDigits:dec,maximumFractionDigits:dec});
+const fHoras = h => { if(h==null || h==="") return "—"; const t = Math.round(Number(h)*60); const H = Math.floor(t/60), M = t%60; return M ? `${H} h ${M} min` : `${H} h`; };
+const diasEntre = (a, b) => Math.round((new Date(dia(b)+"T12:00:00") - new Date(dia(a)+"T12:00:00")) / 864e5);
+const hace = s => { const d = diasEntre(s, hoy()); return d<=0 ? "hoy" : d===1 ? "ayer" : `hace ${d} días`; };
+const esCerrado = t => !!t.cerrado_at || CERRADOS.includes(t.estado);
+const lower = s => (s||"").trim().toLowerCase();
+const nombreDe = email => { if(!email) return "—"; const u = S.usuarios.find(x => lower(x.email)===lower(email)); return u ? (u.nombre || u.email) : email; };
+const MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+const mesKey = s => dia(s).slice(0,7);
+const mesLbl = k => `${MESES[+k.slice(5,7)-1]} ${k.slice(2,4)}`;
+function lunesDe(s){ const d = new Date(dia(s)+"T12:00:00"); const w = (d.getDay()+6)%7; d.setDate(d.getDate()-w); return ymd(d); }
+const renderTpl = (str, v) => String(str||"").replace(/\{(\w+)\}/g, (m,k) => v[k]!=null ? String(v[k]) : m);
+const clavegen = () => { const a="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"; let s=""; for(let i=0;i<10;i++) s+=a[Math.floor(Math.random()*a.length)]; return s+"!"+Math.floor(Math.random()*90+10); };
+
+function toast(msg, err=false){
+  $$(".toast").forEach(x => x.remove());
+  const t = document.createElement("div"); t.className = "toast"+(err?" err":""); t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), err ? 6000 : 3000);
+}
+function fallo(e){ console.error(e); toast(e?.message || String(e), true); }
+async function conBoton(btn, fn){ const txt = btn.innerHTML; btn.disabled = true; btn.innerHTML = `<span class="spin"></span>`; try{ return await fn(); } finally { if(btn.isConnected){ btn.disabled = false; btn.innerHTML = txt; } } }
+
+/* =====================================================================
+   Estado de la app
+   ===================================================================== */
+const DEMO = !CONFIG.SUPABASE_URL;
+const sb = DEMO ? null : supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+const S = {
+  user:null, me:null, usuarios:[], tickets:[], cfg:structuredClone(CFG_DEFAULT), cola:[], notifs:[], horas:[], tab:null,
+  f:{vista:"abiertos", q:"", tipo:"", prioridad:"", asignado:"", solicitante:"", desde:"", hasta:"", alerta:""},
+  soloMios:false, an:{rango:"6"}, hr:{rango:"3", quien:""},
+  abrir: new URLSearchParams(location.search).get("ticket")
+};
+const rol = () => S.me?.rol;
+const staff = () => ["encargado","manager","admin"].includes(rol());
+const aprobTitulo = () => S.cfg.aprobacion.titulo || "Aprobación";
+const esAprobadorDe = t => t.aprob_estado==="Pendiente" && (lower(t.aprob_email)===S.me.email || rol()==="admin");
+const esMio = t => t.solicitante_id===S.user.id;
+const solicitantePuedeEditar = t => esMio(t) && ["Nuevo","En espera de información"].includes(t.estado);
+const puedeCerrar = t => !esCerrado(t) && (staff() || lower(t.asignado_email)===S.me.email);
+const misAprobaciones = () => S.tickets.filter(t => t.aprob_estado==="Pendiente" && lower(t.aprob_email)===S.me.email);
+const colaGlobal = () => S.tickets.filter(t => !esCerrado(t)).sort((a,b) => (a.orden??1e9)-(b.orden??1e9) || a.id-b.id);
+const noLeidas = () => S.notifs.filter(n => !n.leida).length;
+
+function alertaDe(t){
+  if(esCerrado(t)) return null;
+  const h = hoy(), a = S.cfg.app;
+  if(t.fecha_vencimiento && t.fecha_vencimiento < h) return "Vencido";
+  if(t.fecha_vencimiento && t.fecha_vencimiento <= sumarDias(h, +a.dias_alerta||3)) return "Por vencer";
+  if(t.fecha_eta && t.fecha_eta < h) return "ETA superada";
+  if(t.aprob_estado==="Pendiente" && t.aprob_enviado_at && (Date.now()-new Date(t.aprob_enviado_at)) > (+a.dias_aprob_demora||2)*864e5) return "Aprobación demorada";
+  return null;
+}
+const tagAlerta = a => !a ? "" : `<span class="tag ${a==="Vencido"?"t-brick":"t-olive"}">${esc(a)}</span>`;
+function tagEstado(e){
+  const c = {"Nuevo":"t-slate","En análisis":"t-slate","En espera de información":"t-olive","Pendiente aprobación":"t-olive",
+    "Completado":"t-green","Rechazado":"t-brick","Cancelado":"t-gray"}[e] || "t-gray";
+  return `<span class="tag ${c}">${esc(e)}</span>`;
+}
+function tagAprob(t){
+  if(!t.requiere_aprobacion || t.aprob_estado==="No aplica") return "";
+  const c = {Pendiente:"t-olive",Aprobado:"t-green",Rechazado:"t-brick"}[t.aprob_estado] || "t-gray";
+  return `<span class="tag ${c}">${esc(S.cfg.aprobacion.cargo || "Aprobación")}: ${esc(t.aprob_estado)}</span>`;
+}
+const tagPrio = p => `<span class="tag ${({Urgente:"t-brick",Alta:"t-olive",Media:"t-slate",Baja:"t-gray"})[p]}">${esc(p)}</span>`;
+const tipoTxt = t => t.tipo==="Otros" && t.tipo_otro ? `Otros · ${t.tipo_otro}` : t.tipo;
+
+/* =====================================================================
+   Capa de datos · Supabase
+   ===================================================================== */
+const chk = ({data, error}) => { if(error) throw error; return data; };
+const uno = d => Array.isArray(d) ? d[0] : d;
+const API_SB = {
+  async sesion(){ const {data} = await sb.auth.getSession(); return data.session?.user || null; },
+  async ingresar(email, pin){
+    const {data, error} = await sb.functions.invoke(CONFIG.LOGIN_FUNCTION, {body:{email, pin:pin||null}});
+    if(error){
+      let msg = error.message;
+      try{ const j = await error.context.json(); msg = j.error || msg; }catch(e){}
+      if(/Failed to send|FunctionsFetchError|404|not found/i.test(msg)) msg = `No se encontró la función de ingreso "${CONFIG.LOGIN_FUNCTION}". Publícala en Supabase (ver guía).`;
+      throw new Error(msg);
+    }
+    if(data?.session) chk(await sb.auth.setSession(data.session));
+    return data;
+  },
+  async pinPendiente(){ return !!chk(await sb.rpc("pricing_pin_pendiente")); },
+  async cambiarPin(actual, nuevo){ chk(await sb.rpc("pricing_cambiar_pin",{p_actual:actual, p_nuevo:nuevo})); },
+  async resetPin(uid){ chk(await sb.rpc("pricing_reset_pin",{p_user:uid})); },
+  async solicitarAcceso(email, nombre, com){ return chk(await sb.rpc("pricing_solicitar_acceso",{p_email:email, p_nombre:nombre, p_comentario:com||null})); },
+  async solicitudesAcceso(){ return chk(await sb.from("pricing_solicitudes_acceso").select("*").eq("estado","Pendiente").order("id")); },
+  async resolverAcceso(id, estado){ chk(await sb.rpc("pricing_resolver_acceso",{p_id:id, p_estado:estado})); },
+  async bienvenida(email){ chk(await sb.rpc("pricing_bienvenida",{p_email:email})); },
+  async salir(){ await sb.auth.signOut(); },
+  async me(uid){ return chk(await sb.from("pricing_usuarios").select("*").eq("id", uid).maybeSingle()); },
+  async usuarios(){ return chk(await sb.from("pricing_usuarios").select("*").order("nombre")); },
+  async config(){ const rows = chk(await sb.from("pricing_config").select("clave, valor")); const o = {}; rows.forEach(r => o[r.clave] = r.valor); return o; },
+  async guardarConfig(clave, valor){ chk(await sb.from("pricing_config").upsert({clave, valor, updated_at:new Date().toISOString(), updated_by:S.me.email})); },
+  async tickets(){ return chk(await sb.from("pricing_tickets").select("*").order("id",{ascending:false})); },
+  async miCola(){ return chk(await sb.rpc("pricing_mi_cola")) || []; },
+  async horas(){ return staff() ? chk(await sb.from("pricing_horas").select("*").order("fecha",{ascending:false}).limit(5000)) : []; },
+  async notifs(){ return chk(await sb.from("pricing_notificaciones").select("id,ticket_id,codigo,evento,asunto,leida,created_at").eq("para_email", S.me.email).order("id",{ascending:false}).limit(40)); },
+  async marcarLeidas(ids){ if(ids.length) chk(await sb.from("pricing_notificaciones").update({leida:true}).in("id", ids)); },
+  async correosLog(){ return chk(await sb.from("pricing_notificaciones").select("id,evento,para_email,asunto,correo,error_envio,created_at").order("id",{ascending:false}).limit(25)); },
+  async crear(t){ return chk(await sb.from("pricing_tickets").insert(t).select().single()); },
+  async actualizar(id, c){ return chk(await sb.from("pricing_tickets").update(c).eq("id", id).select().single()); },
+  async solicitarAprob(id, nota){ return uno(chk(await sb.rpc("pricing_solicitar_aprobacion",{p_ticket:id, p_nota:nota||null}))); },
+  async resolverAprob(id, dec, com){ return uno(chk(await sb.rpc("pricing_resolver_aprobacion",{p_ticket:id, p_decision:dec, p_comentario:com||null}))); },
+  async cerrar(id, res, horas, txt){ return uno(chk(await sb.rpc("pricing_cerrar",{p_ticket:id, p_resultado:res, p_horas:horas, p_resolucion:txt}))); },
+  async reabrir(id, motivo){ return uno(chk(await sb.rpc("pricing_reabrir",{p_ticket:id, p_motivo:motivo}))); },
+  async reordenar(ids){ chk(await sb.rpc("pricing_reordenar",{p_ids:ids})); },
+  async pruebaCorreo(){ chk(await sb.rpc("pricing_prueba_correo")); },
+  async bitacora(id){ return chk(await sb.from("pricing_bitacora").select("*").eq("ticket_id", id).order("created_at")); },
+  async nota(id, accion, comentario, valor){ chk(await sb.from("pricing_bitacora").insert({ticket_id:id, accion, comentario:comentario||null, valor_nuevo:valor||null})); },
+  async adjuntos(id){ return chk(await sb.from("pricing_adjuntos").select("*").eq("ticket_id", id).order("created_at")); },
+  async subir(id, file){
+    const ruta = `${id}/${Date.now()}_${file.name.replace(/[^\w.\-]+/g,"_")}`;
+    chk(await sb.storage.from("pricing-adjuntos").upload(ruta, file));
+    chk(await sb.from("pricing_adjuntos").insert({ticket_id:id, nombre:file.name, ruta, tamano:file.size}));
+    await this.nota(id, "Adjunto", null, file.name);
+  },
+  async urlAdjunto(ruta){ return chk(await sb.storage.from("pricing-adjuntos").createSignedUrl(ruta, 300)).signedUrl; },
+  async guardarUsuario(id, c){ chk(await sb.from("pricing_usuarios").update(c).eq("id", id)); },
+  async adminUsuario(body){
+    const {data, error} = await sb.functions.invoke(CONFIG.ADMIN_FUNCTION, {body});
+    if(error){
+      let msg = error.message;
+      try{ const j = await error.context.json(); msg = j.error || msg; }catch(e){}
+      if(/Failed to send|not found|404|FunctionsFetchError/i.test(msg)) msg = `No se encontró la función "${CONFIG.ADMIN_FUNCTION}". Publícala en Supabase → Edge Functions (ver guía).`;
+      throw new Error(msg);
+    }
+    if(data?.error) throw new Error(data.error);
+    return data;
+  }
+};
+
+/* =====================================================================
+   Capa de datos · MODO DEMO (localStorage; imita las reglas de la base)
+   ===================================================================== */
+const Demo = {
+  key:"pricing_desk_demo_v2", db:null,
+  seed(){
+    let s = 7; const rnd = () => (s = (s*16807) % 2147483647) / 2147483647;
+    const pick = a => a[Math.floor(rnd()*a.length)];
+    const u = [
+      {id:"u1", email:"admin@legrand.com", nombre:"Administrador TI", rol:"admin", activo:true},
+      {id:"u2", email:"encargado.pricing@legrand.com", nombre:"Encargado Pricing", rol:"encargado", activo:true},
+      {id:"u3", email:"manager.pricing@legrand.com", nombre:"Manager Pricing", rol:"manager", activo:true},
+      {id:"u4", email:"ceo@legrand.com", nombre:"Gerente General", rol:"aprobador", activo:true},
+      {id:"u5", email:"ventas@legrand.com", nombre:"Ejecutivo de Ventas", rol:"solicitante", activo:true},
+      {id:"u6", email:"marketing@legrand.com", nombre:"Coordinadora Marketing", rol:"solicitante", activo:true}
+    ];
+    const titulos = ["Descuento adicional proyecto hotel","Reposicionamiento tomacorrientes","Ajuste lista de precios canal","Introducción nueva serie interruptores",
+      "Paquete kit UPS + PDU","Precios promocionales feria","Revisión precios distribuidor","Descuento por volumen integrador","Precio especial licitación",
+      "Análisis competencia cableado","Lista de precios retail","Paquete iluminación oficinas","Propuesta precios campaña digital","Revisión margen línea data center"];
+    const clientes = ["Cliente Hotelero S.A.","Distribución general","Integrador TI","Canal retail","Marketing","Constructora del Valle","Data Center Norte"];
+    const cfg = structuredClone(CFG_DEFAULT);
+    cfg.aprobacion = {titulo:"Aprobación CEO", nombre:"Gerente General", cargo:"CEO", email:"ceo@legrand.com"};
+    cfg.asignacion = {default_email:"encargado.pricing@legrand.com", por_tipo:{}};
+    cfg.dominios = ["legrand.com","legrand-ext.com"];
+    const T = [], B = [], H = [], h = hoy();
+    let id = 0;
+    // Histórico cerrado de los últimos ~6 meses
+    for(let i=0;i<46;i++){
+      id++; const creado = sumarDias(h, -Math.floor(10 + rnd()*170)); const dur = Math.max(1, Math.round(1 + rnd()*12));
+      const cierre = sumarDias(creado, dur); const sol = pick(["u5","u6"]); const su = u.find(x=>x.id===sol);
+      const tipo = pick(TIPOS); const horas = Math.round((0.5 + rnd()*7)*4)/4; const res = rnd()<.86 ? "Completado" : pick(["Rechazado","Cancelado"]);
+      const ap = tipo===TIPOS[6] || rnd()<.15;
+      T.push({id, tipo, tipo_otro:tipo==="Otros"?"Consulta especial":null, titulo:pick(titulos), descripcion:"", cliente:pick(clientes), linea_producto:"",
+        prioridad:pick(["Baja","Media","Media","Alta","Urgente"]), estado:res, orden:null, solicitante_id:sol, solicitante_email:su.email,
+        asignado_email:"encargado.pricing@legrand.com", fecha_eta:sumarDias(creado, dur-1), fecha_vencimiento:sumarDias(creado, Math.round(4+rnd()*8)),
+        monto_impacto:rnd()<.6 ? Math.round(rnd()*40000) : null, moneda:"USD", descuento_pct:ap ? Math.round(rnd()*12) : null,
+        requiere_aprobacion:ap, aprob_email:ap?"ceo@legrand.com":null, aprob_estado:ap?"Aprobado":"No aplica", aprob_comentario:null,
+        aprob_enviado_at:ap?creado+"T15:00:00Z":null, aprob_resuelto_at:ap?sumarDias(creado,1)+"T16:00:00Z":null, aprob_resuelto_por:ap?"ceo@legrand.com":null,
+        horas_ejecucion:horas, resolucion:"Atendido según política vigente.", cerrado_por:"encargado.pricing@legrand.com",
+        created_at:creado+"T14:00:00Z", updated_at:cierre+"T20:00:00Z", cerrado_at:cierre+"T20:00:00Z"});
+      H.push({id:H.length+1, ticket_id:id, horas, usuario_email:"encargado.pricing@legrand.com", fecha:cierre, nota:"Cierre: "+res, created_at:cierre+"T20:00:00Z"});
+    }
+    // Abiertos actuales
+    const abiertos = [
+      ["Descuento adicional 8% proyecto hotel", TIPOS[6], "Alta", "Pendiente aprobación", 2, 1, "u5", true],
+      ["Ajuste lista de precios Q1", TIPOS[4], "Urgente", "En análisis", -1, 6, "u5", false],
+      ["Reposicionamiento línea de tomacorrientes", TIPOS[0], "Media", "En análisis", 6, 9, "u6", false],
+      ["Paquete de venta kit UPS + PDU", TIPOS[1], "Media", "En espera de información", 8, 4, "u5", false],
+      ["Precios promocionales feria constructores", TIPOS[2], "Baja", "Nuevo", 12, 1, "u6", false],
+      ["Precio de introducción serie Mosaic", TIPOS[3], "Alta", "Nuevo", 3, 0, "u5", false],
+      ["Revisión de precios distribuidor norte", TIPOS[5], "Media", "Nuevo", 9, 0, "u6", false]
+    ];
+    abiertos.forEach(([titulo,tipo,prio,estado,venc,dias,sol,ap],i) => {
+      id++; const su = u.find(x=>x.id===sol); const creado = sumarDias(h,-dias);
+      T.push({id, tipo, tipo_otro:null, titulo, descripcion:"Detalle de la solicitud y condiciones comerciales.", cliente:pick(clientes), linea_producto:"",
+        prioridad:prio, estado, orden:i+1, solicitante_id:sol, solicitante_email:su.email, asignado_email:"encargado.pricing@legrand.com",
+        fecha_eta:estado==="Nuevo"?null:sumarDias(h, i===1?-2:3), fecha_vencimiento:sumarDias(h,venc), monto_impacto:ap?18500:null, moneda:"USD", descuento_pct:ap?8:null,
+        requiere_aprobacion:ap, aprob_email:ap?"ceo@legrand.com":null, aprob_estado:ap?"Pendiente":"No aplica", aprob_comentario:null,
+        aprob_enviado_at:ap?new Date(Date.now()-3*864e5).toISOString():null, aprob_resuelto_at:null, aprob_resuelto_por:null,
+        horas_ejecucion:null, resolucion:null, cerrado_por:null, created_at:creado+"T15:30:00Z", updated_at:creado+"T15:30:00Z", cerrado_at:null});
+    });
+    T.forEach(t => { t.codigo = "PRC-"+String(t.id).padStart(5,"0");
+      B.push({id:B.length+1, ticket_id:t.id, usuario_email:t.solicitante_email, accion:"Creación", campo:null, valor_anterior:null, valor_nuevo:t.tipo, comentario:null, created_at:t.created_at}); });
+    return {usuarios:u, cfg, tickets:T, bitacora:B, horas:H, adjuntos:[], notifs:[], seq:{t:id, b:B.length, h:H.length, a:0, n:0}};
+  },
+  save(){ try{ localStorage.setItem(this.key, JSON.stringify(this.db)); }catch(e){} },
+  init(){ try{ this.db = JSON.parse(localStorage.getItem(this.key)); }catch(e){} if(!this.db){ this.db = this.seed(); this.save(); } },
+  ahora(){ return new Date().toISOString(); },
+  log(ticket_id, accion, campo, ant, nuevo, comentario){
+    this.db.bitacora.push({id:++this.db.seq.b, ticket_id, usuario_email:S.me?.email, accion, campo:campo||null,
+      valor_anterior:ant==null?null:String(ant), valor_nuevo:nuevo==null?null:String(nuevo), comentario:comentario||null, created_at:this.ahora()});
+  },
+  cambio(t, c){ for(const k in c){ if(String(t[k]??"")!==String(c[k]??"")){ if(CAMPOS[k]) this.log(t.id,"Cambio",k,t[k],c[k]); t[k]=c[k]; } } t.updated_at = this.ahora(); },
+  notificar(t, evento, para, extra={}){
+    if(!para) return; if(lower(para)===(S.me?.email||"") && !["prueba","recibido","bienvenida"].includes(evento)) return;
+    const pl = this.db.cfg.plantillas[evento]; if(!pl || !pl.asunto) return;
+    const ap = this.db.cfg.aprobacion, app = this.db.cfg.app.app_url || (location.origin+location.pathname);
+    const nom = e => { const x = this.db.usuarios.find(y => y.email===lower(e)); return x ? x.nombre : (e||"—"); };
+    const v = t ? {codigo:t.codigo, titulo:t.titulo, tipo:t.tipo, cliente:t.cliente||"—", prioridad:t.prioridad, estado:t.estado, descripcion:t.descripcion||"",
+      solicitante:nom(t.solicitante_email), encargado:t.asignado_email?nom(t.asignado_email):"el equipo de Pricing", vencimiento:fFecha(t.fecha_vencimiento), eta:fFecha(t.fecha_eta),
+      monto:t.monto_impacto!=null?fNum(t.monto_impacto)+" "+t.moneda:"—", descuento:t.descuento_pct!=null?t.descuento_pct+" %":"—", horas:t.horas_ejecucion??"—",
+      resolucion:t.resolucion||"", resultado:t.estado, link:app+"?ticket="+t.codigo} : {link:app};
+    Object.assign(v, {aprobacion:ap.titulo||"Aprobación", aprobador:ap.nombre||"", nota:"—", comentario:"—", decision:"", autor:""}, extra);
+    this.db.notifs.unshift({id:++this.db.seq.n, ticket_id:t?.id||null, codigo:t?.codigo||null, evento, para_email:lower(para),
+      asunto:renderTpl(pl.asunto,v), cuerpo_texto:renderTpl(pl.cuerpo,v), leida:false, correo:this.db.cfg.flow_url?"Enviado (demo)":"Sin flujo", created_at:this.ahora()});
+  },
+  t(id){ return this.db.tickets.find(x => x.id===id); }
+};
+const clon = o => JSON.parse(JSON.stringify(o));
+const API_DEMO = {
+  async sesion(){ const id = sessionStorage.getItem("pricing_demo_user"); const u = Demo.db.usuarios.find(x=>x.id===id); return u ? {id:u.id, email:u.email} : null; },
+  async login(id){ sessionStorage.setItem("pricing_demo_user", id); },
+  async estadoAcceso(email){ const e = lower(email), dom = e.split("@")[1];
+    if(!(Demo.db.cfg.dominios||CFG_DEFAULT.dominios).includes(dom)) return "dominio";
+    const u = Demo.db.usuarios.find(x => x.email===e);
+    if(!u) return (Demo.db.solicitudes||[]).some(x => x.email===e && x.estado==="Pendiente") ? "solicitado" : "no_registrado";
+    return u.activo ? "ok" : "inactivo"; },
+  async ingresar(email, pin){
+    const estado = await this.estadoAcceso(email); if(estado!=="ok") return {estado};
+    const u = Demo.db.usuarios.find(x => x.email===lower(email));
+    let cambiar_pin = false;
+    if(u.rol!=="solicitante"){
+      if(!pin) return {estado:"pin"};
+      Demo.db.pins = Demo.db.pins || {}; const k = Demo.db.pins[u.id] = Demo.db.pins[u.id] || {pin:"00000", cambiar:true, intentos:0, hasta:0};
+      if(k.hasta > Date.now()) return {estado:"pin", error:`Demasiados intentos. Intenta de nuevo en ${Math.ceil((k.hasta-Date.now())/60000)} minutos.`};
+      if(pin!==k.pin){ k.intentos++; if(k.intentos>=5){ k.intentos=0; k.hasta=Date.now()+15*60000; Demo.save(); return {estado:"pin", error:"Demasiados intentos. Intenta de nuevo en 15 minutos."}; }
+        Demo.save(); return {estado:"pin", error:`PIN incorrecto. Te quedan ${5-k.intentos} intento${5-k.intentos===1?"":"s"}.`}; }
+      k.intentos = 0; cambiar_pin = k.cambiar; Demo.save();
+    }
+    sessionStorage.setItem("pricing_demo_user", u.id); return {estado:"ok", rol:u.rol, cambiar_pin};
+  },
+  async pinPendiente(){ const k = (Demo.db.pins||{})[S.user.id]; return S.me.rol!=="solicitante" && (!k || k.cambiar); },
+  async cambiarPin(actual, nuevo){ Demo.db.pins = Demo.db.pins || {}; const k = Demo.db.pins[S.user.id] || {pin:"00000"};
+    if(k.pin!==actual) throw new Error("El PIN actual no es correcto"); const e = pinError(nuevo); if(e) throw new Error(e);
+    Demo.db.pins[S.user.id] = {pin:nuevo, cambiar:false, intentos:0, hasta:0}; Demo.save(); },
+  async resetPin(uid){ Demo.db.pins = Demo.db.pins || {}; Demo.db.pins[uid] = {pin:"00000", cambiar:true, intentos:0, hasta:0}; Demo.save(); },
+  async solicitarAcceso(email, nombre, com){ Demo.db.solicitudes = Demo.db.solicitudes || [];
+    if(Demo.db.solicitudes.some(x => x.email===lower(email) && x.estado==="Pendiente")) return "ya_solicitado";
+    Demo.db.solicitudes.push({id:Date.now(), email:lower(email), nombre, comentario:com||null, estado:"Pendiente", created_at:Demo.ahora()});
+    Demo.db.usuarios.filter(u => u.rol==="admin" && u.activo).forEach(a => Demo.notificar(null, "acceso", a.email, {persona:nombre, correo:lower(email), comentario:com||"—"}));
+    Demo.save(); return "ok"; },
+  async solicitudesAcceso(){ return clon((Demo.db.solicitudes||[]).filter(x => x.estado==="Pendiente")); },
+  async resolverAcceso(id, estado){ const r = (Demo.db.solicitudes||[]).find(x => x.id===id); if(r){ r.estado = estado;
+    if(estado==="Aprobada") Demo.notificar(null, "bienvenida", r.email, {persona:r.nombre, correo:r.email}); } Demo.save(); },
+  async bienvenida(email){ const u = Demo.db.usuarios.find(x => x.email===lower(email)); if(u) Demo.notificar(null, "bienvenida", u.email, {persona:u.nombre, correo:u.email}); Demo.save(); },
+  async salir(){ sessionStorage.removeItem("pricing_demo_user"); },
+  async me(uid){ return clon(Demo.db.usuarios.find(x => x.id===uid) || null); },
+  async usuarios(){ return clon(Demo.db.usuarios); },
+  async config(){ return clon(Demo.db.cfg); },
+  async guardarConfig(clave, valor){ Demo.db.cfg[clave] = clon(valor); Demo.save(); },
+  async tickets(){ const st = ["encargado","manager","admin"].includes(S.me.rol);
+    return clon(Demo.db.tickets.filter(t => st || t.solicitante_id===S.me.id || lower(t.asignado_email)===S.me.email || lower(t.aprob_email)===S.me.email)).sort((a,b)=>b.id-a.id); },
+  async miCola(){ const c = Demo.db.tickets.filter(t => !t.cerrado_at).sort((a,b)=>(a.orden??1e9)-(b.orden??1e9)||a.id-b.id);
+    return c.map((t,i) => ({ticket_id:t.id, posicion:i+1, total:c.length, adelante:i, sid:t.solicitante_id})).filter(x => x.sid===S.me.id); },
+  async horas(){ return staff() ? clon(Demo.db.horas) : []; },
+  async notifs(){ return clon(Demo.db.notifs.filter(n => n.para_email===S.me.email).slice(0,40)); },
+  async marcarLeidas(ids){ Demo.db.notifs.forEach(n => { if(ids.includes(n.id)) n.leida = true; }); Demo.save(); },
+  async correosLog(){ return clon(Demo.db.notifs.slice(0,25)); },
+  async crear(t){
+    const id = ++Demo.db.seq.t, now = Demo.ahora(), a = Demo.db.cfg.asignacion;
+    const abiertos = Demo.db.tickets.filter(x => !x.cerrado_at);
+    const row = {tipo_otro:null, descripcion:"", cliente:"", linea_producto:"", fecha_eta:null, fecha_vencimiento:null, monto_impacto:null, moneda:"USD",
+      descuento_pct:null, prioridad:"Media", ...t, id, codigo:"PRC-"+String(id).padStart(5,"0"), estado:"Nuevo",
+      orden:Math.max(0, ...abiertos.map(x=>x.orden||0))+1, solicitante_id:S.user.id, solicitante_email:S.me.email,
+      requiere_aprobacion:false, aprob_email:null, aprob_estado:"No aplica", aprob_comentario:null, aprob_enviado_at:null, aprob_resuelto_at:null, aprob_resuelto_por:null,
+      horas_ejecucion:null, resolucion:null, cerrado_por:null, created_at:now, updated_at:now, cerrado_at:null};
+    if(!staff()) { row.asignado_email = null; row.fecha_eta = null; }
+    if(!row.asignado_email) row.asignado_email = lower((a.por_tipo||{})[row.tipo] || a.default_email) || null;
+    Demo.db.tickets.push(row); Demo.log(id, "Creación", null, null, row.tipo);
+    if(row.asignado_email) Demo.log(id, "Cambio", "asignado_email", null, row.asignado_email);
+    Demo.notificar(row, "recibido", row.solicitante_email); Demo.notificar(row, "nuevo", row.asignado_email);
+    Demo.save(); return clon(row);
+  },
+  async actualizar(id, c){
+    const t = Demo.t(id), antes = t.estado, asig = t.asignado_email; Demo.cambio(t, c);
+    if(t.estado==="En espera de información" && antes!==t.estado) Demo.notificar(t, "info", t.solicitante_email);
+    if(t.asignado_email!==asig) Demo.notificar(t, "nuevo", t.asignado_email);
+    Demo.save(); return clon(t);
+  },
+  async solicitarAprob(id, nota){
+    const t = Demo.t(id), ap = Demo.db.cfg.aprobacion;
+    if(!ap.email) throw new Error("El administrador aún no configura el aprobador");
+    if(t.aprob_estado==="Pendiente") throw new Error("Ya tiene una aprobación pendiente");
+    Demo.cambio(t, {requiere_aprobacion:true, aprob_email:lower(ap.email), aprob_estado:"Pendiente", estado:"Pendiente aprobación"});
+    Object.assign(t, {aprob_enviado_at:Demo.ahora(), aprob_comentario:null, aprob_resuelto_at:null, aprob_resuelto_por:null});
+    Demo.log(id, "Solicitud de aprobación", null, null, ap.email, nota); Demo.notificar(t, "aprobacion", ap.email, {nota:nota||"—"});
+    Demo.save(); return clon(t);
+  },
+  async resolverAprob(id, dec, com){
+    const t = Demo.t(id);
+    if(t.aprob_estado!=="Pendiente") throw new Error("Este ticket no tiene una aprobación pendiente");
+    if(dec==="Rechazado" && !(com||"").trim()) throw new Error("Indica el motivo del rechazo");
+    Demo.cambio(t, {aprob_estado:dec, estado:"En análisis"});
+    Object.assign(t, {aprob_comentario:com||null, aprob_resuelto_at:Demo.ahora(), aprob_resuelto_por:S.me.email});
+    Demo.log(id, "Decisión de aprobación", null, null, dec, com);
+    const ex = {decision:dec.toLowerCase(), comentario:com||"—", aprobador:S.me.nombre};
+    Demo.notificar(t, "decision", t.solicitante_email, ex); if(t.asignado_email!==t.solicitante_email) Demo.notificar(t, "decision", t.asignado_email, ex);
+    Demo.save(); return clon(t);
+  },
+  async cerrar(id, res, horas, txt){
+    const t = Demo.t(id);
+    if(t.aprob_estado==="Pendiente") throw new Error("Hay una aprobación pendiente");
+    Demo.db.horas.push({id:++Demo.db.seq.h, ticket_id:id, horas, usuario_email:S.me.email, fecha:hoy(), nota:"Cierre: "+res, created_at:Demo.ahora()});
+    const total = Demo.db.horas.filter(x => x.ticket_id===id).reduce((s,x)=>s+Number(x.horas),0);
+    Demo.cambio(t, {estado:res, horas_ejecucion:total});
+    Object.assign(t, {resolucion:txt, cerrado_por:S.me.email, cerrado_at:Demo.ahora(), asignado_email:t.asignado_email||S.me.email});
+    Demo.log(id, "Cierre", null, null, `${res} · ${horas} h`, txt); Demo.notificar(t, "cierre", t.solicitante_email);
+    Demo.save(); return clon(t);
+  },
+  async reabrir(id, motivo){
+    const t = Demo.t(id), min = Math.min(1, ...Demo.db.tickets.filter(x=>!x.cerrado_at).map(x=>x.orden||1));
+    Demo.cambio(t, {estado:"En análisis"}); Object.assign(t, {cerrado_at:null, cerrado_por:null, orden:min-1});
+    Demo.log(id, "Reapertura", null, null, null, motivo); Demo.save(); return clon(t);
+  },
+  async reordenar(ids){ ids.forEach((id,i) => { const t = Demo.t(id); if(t && !t.cerrado_at) t.orden = i+1; }); Demo.save(); },
+  async pruebaCorreo(){ Demo.notificar(null, "prueba", S.me.email); Demo.save(); },
+  async bitacora(id){ return clon(Demo.db.bitacora.filter(b => b.ticket_id===id)); },
+  async nota(id, accion, comentario, valor){
+    Demo.log(id, accion, null, null, valor, comentario);
+    if(accion==="Comentario"){ const t = Demo.t(id), ex = {autor:S.me.nombre, comentario};
+      if(S.me.email===lower(t.solicitante_email)) Demo.notificar(t, "comentario", t.asignado_email, ex); else Demo.notificar(t, "comentario", t.solicitante_email, ex); }
+    Demo.save();
+  },
+  async adjuntos(id){ return clon(Demo.db.adjuntos.filter(a => a.ticket_id===id)); },
+  async subir(id, file){ Demo.db.adjuntos.push({id:++Demo.db.seq.a, ticket_id:id, nombre:file.name, ruta:"demo", tamano:file.size, subido_por:S.me.email, created_at:Demo.ahora()});
+    Demo.log(id, "Adjunto", null, null, file.name); Demo.save(); },
+  async urlAdjunto(){ throw new Error("En modo demo los archivos no se guardan"); },
+  async guardarUsuario(id, c){ Object.assign(Demo.db.usuarios.find(u=>u.id===id), c); Demo.save(); },
+  async adminUsuario(b){
+    if(b.accion==="crear"){ if(Demo.db.usuarios.some(u=>u.email===lower(b.email))) throw new Error("Ese correo ya tiene usuario");
+      Demo.db.usuarios.push({id:"u"+Date.now(), email:lower(b.email), nombre:b.nombre||b.email.split("@")[0], rol:b.rol, activo:true}); }
+    if(b.accion==="estado"){ if(b.id===S.user.id && !b.activo) throw new Error("No puedes desactivarte a ti mismo"); Demo.db.usuarios.find(u=>u.id===b.id).activo = !!b.activo; }
+    Demo.save(); return {ok:true};
+  }
+};
+const API = DEMO ? API_DEMO : API_SB;
+
+/* =====================================================================
+   Arranque y sesión
+   ===================================================================== */
+let iniciando = false;
+async function iniciar(){
+  if(iniciando) return; iniciando = true;
+  if(DEMO) Demo.init();
+  try{
+    S.user = await API.sesion();
+    if(!S.user) return pintarLogin();
+    S.me = await API.me(S.user.id);
+    if(!S.me || !S.me.activo) return pintarSinAcceso();
+    S.me.email = lower(S.me.email);
+    if(S.me.rol!=="solicitante" && await API.pinPendiente()) return pintarCambioPin(true);
+    await recargar();
+    S.tab = tabsRol()[0][0];
+    if(misAprobaciones().length && tabsRol().some(x=>x[0]==="aprobaciones")) S.tab = "aprobaciones";
+    pintarApp();
+    if(S.abrir){
+      const t = S.tickets.find(x => x.codigo===S.abrir || String(x.id)===S.abrir);
+      S.abrir = null; history.replaceState(null, "", location.pathname);
+      if(t) abrirDetalle(t.id); else toast("No tienes acceso a ese ticket o no existe", true);
+    }
+  }catch(e){ fallo(e); pintarLogin(); }
+  finally{ iniciando = false; }
+}
+async function recargar(){
+  const [u, cfg] = await Promise.all([API.usuarios(), API.config()]);
+  S.usuarios = u || [];
+  S.cfg = structuredClone(CFG_DEFAULT);
+  for(const k in cfg){ S.cfg[k] = (cfg[k] && typeof cfg[k]==="object" && !Array.isArray(cfg[k])) ? {...(CFG_DEFAULT[k]||{}), ...cfg[k]} : cfg[k]; }
+  S.cfg.plantillas = {...CFG_DEFAULT.plantillas, ...(cfg.plantillas||{})};
+  const [t, cola, n, h] = await Promise.all([API.tickets(), API.miCola(), API.notifs(), API.horas()]);
+  S.tickets = t || []; S.cola = cola || []; S.notifs = n || []; S.horas = h || [];
+}
+if(!DEMO){
+  sb.auth.onAuthStateChange(ev => { if(ev==="SIGNED_IN" && !S.me) iniciar(); if(ev==="SIGNED_OUT"){ S.me=null; S.user=null; pintarLogin(); } });
+}
+// Actualización automática cada minuto (si no hay un formulario abierto)
+setInterval(async () => {
+  if(!S.me || document.hidden || $("#modal-root").innerHTML || $("#np-root").innerHTML) return;
+  try{ await recargar(); pintarApp(true); }catch(e){}
+}, 60000);
+
+const MARCA = `<div class="brand" style="color:var(--green);margin-bottom:6px"><span class="logo" style="background:var(--green);color:#fff">legrand</span> Pricing Desk</div>`;
+const pantallaLogin = html => { $("#app").innerHTML = `<div class="login"><div class="card">${MARCA}${html}</div></div>`; };
+const pinInput = (id, ph="•••••") => `<input type="password" id="${id}" inputmode="numeric" autocomplete="off" maxlength="8" required
+  style="font-size:24px;letter-spacing:8px;text-align:center;font-weight:800" placeholder="${ph}">`;
+function soloDigitos(el){ el.oninput = () => { el.value = el.value.replace(/\D/g,""); }; }
+function pinError(p){   // mismas reglas que la base de datos
+  if(!/^\d{5,8}$/.test(p)) return "El PIN debe tener de 5 a 8 dígitos";
+  if(p==="00000") return "Elige un PIN distinto al inicial";
+  if(/^(\d)\1*$/.test(p)) return "El PIN no puede tener todos los dígitos iguales";
+  const d = [...p].map(Number);
+  if(d.every((x,i) => i===0 || (x - d[i-1] + 10)%10===1) || d.every((x,i) => i===0 || (d[i-1] - x + 10)%10===1)) return "El PIN no puede ser una secuencia como 12345";
+  return null;
+}
+
+function pintarLogin(){
+  const L = {email: (() => { try{ return localStorage.getItem("pricing_ultimo_correo") || ""; }catch(e){ return ""; } })()};
+
+  const pasoCorreo = (aviso="") => {
+    pantallaLogin(`<h1>Ingresa con tu correo</h1>
+      <p class="muted small" style="margin-top:0">${S.abrir ? `Para abrir el ticket <b>${esc(S.abrir)}</b>, ingresa primero. ` : ""}Usa tu correo corporativo de Legrand.</p>
+      ${aviso}
+      <form class="grid" style="gap:10px" id="f1">
+        <label class="f">Correo corporativo<input type="email" id="lemail" required autocomplete="email" value="${esc(L.email)}" placeholder="nombre@legrand.com"></label>
+        <button class="btn pri" type="submit" id="b1">Continuar</button>
+      </form>
+      ${DEMO ? `<div class="banner" style="margin:16px 0 0"><b>Modo demo.</b> Los solicitantes entran directo; los demás roles usan PIN (inicial <b>00000</b>). Correos de prueba:
+        <div class="chips" style="margin-top:8px">${Demo.db.usuarios.filter(u=>u.activo).map(u => `<span class="chip" data-mail="${esc(u.email)}" title="${ROLES[u.rol]}">${esc(u.email)}</span>`).join("")}</div>
+        <button class="btn ghost sm" id="reset" style="margin-top:10px">Restablecer datos de ejemplo</button></div>` : ""}`);
+    $("#lemail").focus();
+    $$("[data-mail]").forEach(c => c.onclick = () => { $("#lemail").value = c.dataset.mail; });
+    $("#reset") && ($("#reset").onclick = () => { localStorage.removeItem(Demo.key); Demo.db=null; Demo.init(); toast("Datos restablecidos"); pasoCorreo(); });
+    $("#f1").onsubmit = async e => {
+      e.preventDefault(); L.email = lower($("#lemail").value);
+      try{ localStorage.setItem("pricing_ultimo_correo", L.email); }catch(err){}
+      try{ resultado(await conBoton($("#b1"), () => API.ingresar(L.email))); }catch(err){ fallo(err); }
+    };
+  };
+
+  const resultado = r => {
+    if(r.estado==="ok") return iniciar();
+    if(r.estado==="pin") return pasoPin(r.error);
+    if(r.estado==="no_registrado") return pasoSolicitud();
+    if(r.estado==="dominio") return pasoCorreo(`<div class="banner err">Ese correo no pertenece a un dominio autorizado (por ejemplo @legrand.com o @legrand-ext.com).</div>`);
+    if(r.estado==="inactivo") return pasoCorreo(`<div class="banner err">Tu usuario está desactivado. Escribe al administrador para reactivarlo.</div>`);
+    if(r.estado==="solicitado") return pasoCorreo(`<div class="banner">Tu solicitud de acceso ya está con el administrador. Te avisaremos por correo cuando esté lista.</div>`);
+    pasoCorreo(`<div class="banner err">${esc(r.error || "No se pudo ingresar")}</div>`);
+  };
+
+  const pasoPin = (error) => {
+    pantallaLogin(`<h1>Escribe tu PIN</h1>
+      <p class="muted small" style="margin-top:0"><b>${esc(L.email)}</b></p>
+      ${error ? `<div class="banner err">${esc(error)}</div>` : ""}
+      <form class="grid" style="gap:10px" id="f2">
+        <label class="f">PIN${pinInput("lpin")}</label>
+        <button class="btn pri" type="submit" id="b2">Entrar</button>
+        <button class="btn ghost sm" type="button" id="otro">Usar otro correo</button>
+      </form>
+      <p class="hint" style="margin-bottom:0">Si es tu primer ingreso, tu PIN es <b>00000</b> y te pediremos cambiarlo. ¿Lo olvidaste? Pide al administrador que lo restablezca.</p>`);
+    $("#lpin").focus(); soloDigitos($("#lpin"));
+    $("#otro").onclick = () => pasoCorreo();
+    $("#f2").onsubmit = async e => { e.preventDefault(); const pin = $("#lpin").value;
+      S.pinIngresado = pin;
+      try{ const r = await conBoton($("#b2"), () => API.ingresar(L.email, pin)); if(r.estado!=="ok") S.pinIngresado = null; resultado(r); }catch(err){ S.pinIngresado = null; fallo(err); } };
+  };
+
+  const pasoSolicitud = () => {
+    pantallaLogin(`<h1>Aún no tienes acceso</h1>
+      <p class="muted small" style="margin-top:0"><b>${esc(L.email)}</b> no está registrado en Pricing Desk. Envía una solicitud al administrador y te avisaremos por correo cuando esté lista.</p>
+      <form class="grid" style="gap:10px" id="f3">
+        <label class="f">Tu nombre completo<input type="text" id="snom" required maxlength="120"></label>
+        <label class="f">Área o motivo (opcional)<input type="text" id="scom" maxlength="300" placeholder="Ej. Ventas canal retail"></label>
+        <button class="btn pri" type="submit" id="b3">Solicitar acceso al administrador</button>
+        <button class="btn ghost sm" type="button" id="otro">Usar otro correo</button>
+      </form>`);
+    $("#snom").focus(); $("#otro").onclick = () => pasoCorreo();
+    $("#f3").onsubmit = async e => { e.preventDefault();
+      try{ await conBoton($("#b3"), () => API.solicitarAcceso(L.email, $("#snom").value.trim(), $("#scom").value.trim()));
+        pasoCorreo(`<div class="banner">Listo, el administrador recibió tu solicitud. Te avisaremos por correo cuando tengas acceso.</div>`); }
+      catch(err){ fallo(err); } };
+  };
+  pasoCorreo();
+}
+
+// Cambio de PIN: obligatorio en el primer ingreso (pantalla completa) u opcional desde el botón "PIN"
+function pintarCambioPin(obligatorio){
+  const conocido = obligatorio && S.pinIngresado;
+  const form = `<h1>${obligatorio ? "Crea tu PIN personal" : "Cambiar PIN"}</h1>
+    <p class="muted small" style="margin-top:0">${obligatorio ? "Es tu primer ingreso o el administrador restableció tu PIN. Elige uno nuevo para continuar." : "Usarás este PIN cada vez que ingreses."}</p>
+    <form class="grid" style="gap:10px" id="fp">
+      ${conocido ? "" : `<label class="f">PIN actual${pinInput("pa")}</label>`}
+      <label class="f">PIN nuevo (5 a 8 dígitos)${pinInput("pn")}</label>
+      <label class="f">Repite el PIN nuevo${pinInput("pc")}</label>
+      <div class="hint">No se permiten 00000, dígitos repetidos (77777) ni secuencias (12345).</div>
+      <button class="btn pri" type="submit" id="bp">Guardar PIN</button>
+      ${obligatorio ? `<button class="btn ghost sm" type="button" id="psalir">Salir</button>` : `<button class="btn ghost sm" type="button" id="pcancel">Cancelar</button>`}
+    </form>`;
+  if(obligatorio) pantallaLogin(form);
+  else modal(`<div class="modal-h"><div></div><button class="x">×</button></div>${form}`, "narrow");
+  $$("#fp input").forEach(soloDigitos); ($("#pa") || $("#pn")).focus();
+  $("#psalir") && ($("#psalir").onclick = async () => { await API.salir(); S.me = null; S.user = null; pintarLogin(); });
+  $("#pcancel") && ($("#pcancel").onclick = cerrarModal);
+  $("#fp").onsubmit = async e => {
+    e.preventDefault();
+    const actual = conocido ? S.pinIngresado : $("#pa").value, nuevo = $("#pn").value;
+    if(nuevo !== $("#pc").value) return toast("Los PIN nuevos no coinciden", true);
+    const err = pinError(nuevo); if(err) return toast(err, true);
+    try{
+      await conBoton($("#bp"), () => API.cambiarPin(actual, nuevo));
+      S.pinIngresado = null; toast("PIN actualizado");
+      if(obligatorio){ S.me = null; iniciar(); } else cerrarModal();
+    }catch(e2){ fallo(e2); }
+  };
+}
+
+function pintarSinAcceso(){
+  $("#app").innerHTML = `<div class="login"><div class="card"><h1>Sin acceso</h1>
+    <p class="muted">Tu usuario no está activo en Pricing Desk. Pide al administrador que te habilite.</p>
+    <button class="btn" id="salir">Salir</button></div></div>`;
+  $("#salir").onclick = async () => { await API.salir(); location.reload(); };
+}
+
+/* =====================================================================
+   Estructura principal
+   ===================================================================== */
+function tabsRol(){
+  const T = {inicio:["inicio", rol()==="manager" ? "Cola" : "Inicio"], tickets:["tickets","Tickets"], analitica:["analitica","Analítica"],
+    horas:["horas","Horas"], aprob:["aprobaciones","Aprobaciones", misAprobaciones().length], mis:["mis","Mis solicitudes"],
+    usuarios:["usuarios","Usuarios"], config:["config","Configuración"]};
+  const conAprob = l => misAprobaciones().length && !l.includes(T.aprob) ? [...l, T.aprob] : l;
+  switch(rol()){
+    case "solicitante": return conAprob([T.mis]);
+    case "aprobador":   return [T.aprob, T.mis];
+    case "encargado":   return conAprob([T.inicio, T.tickets, T.mis]);
+    case "manager":     return conAprob([T.analitica, T.inicio, T.tickets, T.horas, T.mis]);
+    default:            return [T.inicio, T.tickets, T.analitica, T.horas, T.aprob, T.mis, T.usuarios, T.config];
+  }
+}
+function pintarApp(silencioso=false){
+  const tabs = tabsRol(); if(!tabs.some(x => x[0]===S.tab)) S.tab = tabs[0][0];
+  const nN = noLeidas();
+  const scroll = window.scrollY;
+  $("#app").innerHTML = `
+    <header class="top">
+      <div class="top-in">
+        <div class="brand"><span class="logo">legrand</span> Pricing Desk <small>${DEMO ? "· demo" : ""}</small></div>
+        <div class="user">
+          ${DEMO ? `<select class="demo-sw hide-sm" id="demosw" title="Cambiar de usuario (demo)">${Demo.db.usuarios.filter(u=>u.activo).map(u=>`<option value="${u.id}" ${u.id===S.user.id?"selected":""}>${esc(u.nombre)} · ${ROLES[u.rol]}</option>`).join("")}</select>` : ""}
+          <button class="icon-btn solid" id="nuevo">+<span class="hide-sm"> Nueva solicitud</span></button>
+          <button class="icon-btn" id="bell" title="Notificaciones">🔔${nN ? `<span class="bell-n">${nN}</span>` : ""}</button>
+          ${DEMO ? "" : `<span class="hide-sm">${esc(S.me.nombre || S.me.email)}</span><span class="chip-rol hide-sm">${ROLES[rol()]}</span>`}
+          ${rol()!=="solicitante" ? `<button class="icon-btn hide-sm" id="mipin" title="Cambiar mi PIN">PIN</button>` : ""}
+          <button class="icon-btn" id="salir">Salir</button>
+        </div>
+      </div>
+      <nav class="tabs">${tabs.map(([k,l,n]) => `<button class="tab ${S.tab===k?"on":""}" data-tab="${k}">${l}${n?`<span class="n">${n}</span>`:""}</button>`).join("")}</nav>
+    </header>
+    <main id="main"></main>`;
+  $$("[data-tab]").forEach(b => b.onclick = () => { S.tab = b.dataset.tab; pintarApp(); window.scrollTo(0,0); });
+  $("#nuevo").onclick = abrirNuevo;
+  $("#bell").onclick = panelNotif;
+  $("#mipin") && ($("#mipin").onclick = () => pintarCambioPin(false));
+  $("#salir").onclick = async () => { await API.salir(); S.me=null; S.user=null; DEMO ? pintarLogin() : location.reload(); };
+  $("#demosw") && ($("#demosw").onchange = async e => { await API.login(e.target.value); S.me=null; iniciar(); });
+  ({inicio:vInicio, tickets:vTickets, analitica:vAnalitica, horas:vHoras, aprobaciones:vAprobaciones, mis:vMis, usuarios:vUsuarios, config:vConfig}[S.tab] || vMis)();
+  if(silencioso) window.scrollTo(0, scroll);
+}
+async function refrescar(){ try{ await recargar(); pintarApp(true); }catch(e){ fallo(e); } }
+
+/* ---------- Notificaciones ---------- */
+function panelNotif(){
+  if($("#np-root").innerHTML){ $("#np-root").innerHTML = ""; return; }
+  const n = S.notifs;
+  $("#np-root").innerHTML = `<div class="np">
+    <div class="row" style="padding:12px 14px;border-bottom:1px solid var(--line)"><b class="grow">Notificaciones</b>${noLeidas()?`<button class="btn sm" id="np-all">Marcar leídas</button>`:""}</div>
+    ${n.length ? n.map(x => `<div class="it ${x.leida?"":"unread"}" data-n="${x.id}" data-t="${x.ticket_id||""}">
+        <div class="${x.leida?"":"b"}">${esc(x.asunto)}</div><div class="sub">${fFechaHora(x.created_at)}</div></div>`).join("")
+      : `<div class="empty">Sin notificaciones</div>`}</div>`;
+  const cerrar = () => { $("#np-root").innerHTML = ""; document.removeEventListener("click", fuera, true); };
+  const fuera = e => { if(!e.target.closest(".np") && !e.target.closest("#bell")) cerrar(); };
+  setTimeout(() => document.addEventListener("click", fuera, true));
+  $$("#np-root [data-n]").forEach(el => el.onclick = async () => {
+    const id = +el.dataset.n, tid = +el.dataset.t; cerrar();
+    try{ await API.marcarLeidas([id]); const x = S.notifs.find(q=>q.id===id); if(x) x.leida = true; pintarApp(true); }catch(e){}
+    if(tid) abrirDetalle(tid);
+  });
+  $("#np-all") && ($("#np-all").onclick = async () => { const ids = S.notifs.filter(x=>!x.leida).map(x=>x.id);
+    try{ await API.marcarLeidas(ids); S.notifs.forEach(x=>x.leida=true); cerrar(); pintarApp(true); }catch(e){ fallo(e); } });
+}
+
+/* =====================================================================
+   Mis solicitudes (vista del solicitante)
+   ===================================================================== */
+function pasos(t){
+  const ap = t.requiere_aprobacion, apL = S.cfg.aprobacion.cargo || "Aprobación";
+  const L = ["Recibida", ...(ap?[apL]:[]), "En cola", "En análisis", "Cerrada"];
+  let i, warn = false;
+  if(esCerrado(t)) i = L.length-1;
+  else if(t.estado==="Pendiente aprobación"){ i = L.indexOf(apL); warn = true; }
+  else if(t.estado==="En espera de información"){ i = L.indexOf("En análisis"); warn = true; }
+  else if(t.estado==="En análisis") i = L.indexOf("En análisis");
+  else i = L.indexOf("En cola");
+  return `<div class="steps">${L.map((l,k) => `<div class="step ${k<i||esCerrado(t)?"done":k===i?"now"+(warn?" warn":""):""}"><div class="c"></div>${esc(l)}</div>`).join("")}</div>`;
+}
+function pista(c){
+  const adelante = c.adelante, MAX = 10; let html = "";
+  const dotsAntes = Math.min(adelante, MAX);
+  for(let i=0;i<dotsAntes;i++) html += `<span class="dot ${i===0?"work":""}" title="${i===0?"En atención":"Solicitud antes de la tuya"}"></span>`;
+  if(adelante > MAX) html += `<span class="dots-more">+${adelante-MAX}</span>`;
+  html += `<span class="dot me" title="Tu solicitud">Tú</span>`;
+  const despues = Math.min(c.total - c.posicion, 4);
+  for(let i=0;i<despues;i++) html += `<span class="dot after"></span>`;
+  return `<div class="track">${html}</div>`;
+}
+function vMis(){
+  const mias = S.tickets.filter(esMio);
+  const abiertas = mias.filter(t => !esCerrado(t)).sort((a,b) => (a.orden??1e9)-(b.orden??1e9));
+  const cerradas = mias.filter(esCerrado).sort((a,b) => (b.cerrado_at||"").localeCompare(a.cerrado_at||""));
+  const card = t => {
+    const c = S.cola.find(x => x.ticket_id===t.id);
+    let pos;
+    if(t.estado==="Pendiente aprobación") pos = `<div class="posbox wait"><div class="big">En aprobación</div><div class="of">Esperando a ${esc(S.cfg.aprobacion.nombre || S.cfg.aprobacion.cargo || "el aprobador")}</div></div>`;
+    else if(t.estado==="En espera de información") pos = `<div class="posbox wait"><div class="big">Tu respuesta</div><div class="of">Pricing necesita información</div></div>`;
+    else if(c) pos = `<div class="posbox"><div class="big">#${c.posicion}</div><div class="of">en la cola de ${c.total}</div></div>`;
+    else pos = `<div class="posbox"><div class="big">—</div><div class="of">Calculando posición</div></div>`;
+    let msg = "";
+    if(t.estado==="En espera de información") msg = `<div class="banner" style="margin:0 0 8px">El equipo de Pricing necesita información. Abre el ticket y responde en los comentarios.</div>`;
+    else if(t.estado==="Pendiente aprobación") msg = `<div class="small" style="margin-bottom:6px">Tu solicitud está en revisión de <b>${esc(aprobTitulo())}</b>. La cola continúa al recibir la decisión.</div>`;
+    else if(c) msg = `<div class="b" style="margin-bottom:2px">${c.adelante===0 ? (t.estado==="En análisis" ? "¡Tu solicitud se está atendiendo!" : "¡Tu solicitud es la siguiente!") : `Hay ${c.adelante} solicitud${c.adelante>1?"es":""} antes de la tuya`}</div>${pista(c)}`;
+    return `<div class="mcard">
+      <div class="hdr" data-open="${t.id}"><div class="grow">
+        <div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span>${tagEstado(t.estado)}${tagAprob(t)}</div>
+        <div class="b" style="margin-top:4px">${esc(t.titulo)}</div>
+        <div class="sub">${esc(tipoTxt(t))} · enviada ${hace(t.created_at)}${t.fecha_eta?` · fecha estimada <b>${fFecha(t.fecha_eta)}</b>`:""}</div></div>
+        <span class="btn sm">Ver detalle</span></div>
+      <div class="body">${pos}<div>${msg}${pasos(t)}</div></div></div>`;
+  };
+  $("#main").innerHTML = `
+    <div class="page-h"><div class="grow"><h1>Mis solicitudes</h1><p class="muted small">Sigue el avance de tus solicitudes y tu lugar en la cola de Pricing.</p></div>
+      <button class="btn pri" id="mis-nueva">+ Nueva solicitud</button></div>
+    ${abiertas.length ? `<div class="mine">${abiertas.map(card).join("")}</div>`
+      : `<div class="card empty">No tienes solicitudes abiertas. <a href="#" id="mis-nueva2">Crear una</a></div>`}
+    <h2 style="margin-top:24px">Cerradas</h2>
+    ${cerradas.length ? `<div class="tbl-wrap"><table><thead><tr><th>Ticket</th><th>Solicitud</th><th>Resultado</th><th>Resolución</th><th>Cerrada</th><th class="r">Días</th></tr></thead>
+      <tbody>${cerradas.map(t => `<tr class="click" data-open="${t.id}"><td class="code">${esc(t.codigo)}</td><td><div class="b">${esc(t.titulo)}</div><div class="sub">${esc(tipoTxt(t))}</div></td>
+        <td>${tagEstado(t.estado)}</td><td class="small" style="max-width:380px">${esc(t.resolucion||"—")}</td><td class="small num">${fFecha(t.cerrado_at)}</td><td class="r num">${diasEntre(t.created_at, t.cerrado_at)}</td></tr>`).join("")}</tbody></table></div>`
+      : `<div class="muted small">Aún no tienes solicitudes cerradas.</div>`}`;
+  $$("[data-open]").forEach(el => el.onclick = () => abrirDetalle(+el.dataset.open));
+  $("#mis-nueva").onclick = abrirNuevo; $("#mis-nueva2") && ($("#mis-nueva2").onclick = e => { e.preventDefault(); abrirNuevo(); });
+}
+
+/* =====================================================================
+   Inicio del encargado: KPIs + cola arrastrable
+   ===================================================================== */
+function vInicio(){
+  const T = S.tickets, ab = T.filter(t => !esCerrado(t)), h = hoy(), lunes = lunesDe(h);
+  const misAb = ab.filter(t => lower(t.asignado_email)===S.me.email);
+  const base = rol()==="encargado" && misAb.length ? misAb : ab;
+  const horasSem = S.horas.filter(x => dia(x.fecha) >= lunes && (rol()!=="encargado" || lower(x.usuario_email)===S.me.email)).reduce((s,x)=>s+Number(x.horas),0);
+  const k = [
+    ["Pendientes", base.length, "k-green", {vista:"abiertos"}],
+    ["Ingresados hoy", T.filter(t => dia(t.created_at)===h).length, "k-slate", {vista:"todos", desde:h, hasta:h}],
+    ["Prioridad alta o urgente", base.filter(t => ["Alta","Urgente"].includes(t.prioridad)).length, "k-olive", {vista:"abiertos", prioridad:"altas"}],
+    ["Vencidos", base.filter(t => alertaDe(t)==="Vencido").length, "k-brick", {vista:"abiertos", alerta:"Vencido"}],
+    ["Por vencer", base.filter(t => alertaDe(t)==="Por vencer").length, "k-olive", {vista:"abiertos", alerta:"Por vencer"}],
+    [`En ${aprobTitulo()}`, base.filter(t => t.estado==="Pendiente aprobación").length, "k-slate", {vista:"Pendiente aprobación"}],
+    ["Esperando información", base.filter(t => t.estado==="En espera de información").length, "k-slate", {vista:"En espera de información"}],
+    ["Cerrados esta semana", T.filter(t => t.cerrado_at && dia(t.cerrado_at) >= lunes).length, "k-green", {vista:"cerrados", desde:lunes}],
+    ["Horas esta semana", fNum(horasSem,1), "k-slate", null]
+  ];
+  let lista = colaGlobal(); if(S.soloMios) lista = lista.filter(t => lower(t.asignado_email)===S.me.email);
+  const pos = new Map(colaGlobal().map((t,i) => [t.id, i+1]));
+  $("#main").innerHTML = `
+    <div class="page-h"><div class="grow"><h1>Hola, ${esc((S.me.nombre||"").split(" ")[0] || "equipo")}</h1><p class="muted small">${new Date().toLocaleDateString("es-CR",{weekday:"long", day:"numeric", month:"long"})}</p></div>
+      <button class="btn sm" id="recargar">Actualizar</button></div>
+    <div class="grid kpis">${k.map(([l,v,c,f],i) => `<button class="kpi ${c}" data-k="${i}" ${f?"":"disabled style='cursor:default'"}><div class="v num">${v}</div><div class="l">${l}</div></button>`).join("")}</div>
+    <div class="page-h" style="margin-top:22px;margin-bottom:10px"><div class="grow"><h2 style="margin:0">Cola de atención</h2>
+      <p class="hint">Arrastra desde ⠿ (o usa ▲ ▼) para cambiar el orden en que se atienden. El #1 es el siguiente.</p></div>
+      <label class="check small"><input type="checkbox" id="solomios" ${S.soloMios?"checked":""}> Solo asignados a mí</label></div>
+    ${lista.length ? `<div class="queue" id="queue">${lista.map(t => `<div class="qi ${pos.get(t.id)===1?"first":""}" data-id="${t.id}">
+        <div class="hd" title="Arrastrar">⠿</div><div class="pos">${pos.get(t.id)}</div>
+        <div class="main" data-open="${t.id}"><div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span><span class="tt ell grow">${esc(t.titulo)}</span></div>
+          <div class="meta">${tagPrio(t.prioridad)}${tagEstado(t.estado)}${tagAprob(t)}${tagAlerta(alertaDe(t))}
+            <span class="sub">${esc(nombreDe(t.solicitante_email))} · ${hace(t.created_at)} · vence ${fFecha(t.fecha_vencimiento)}</span></div></div>
+        <div class="side">${puedeCerrar(t)?`<button class="btn sm" data-close="${t.id}">Cerrar</button>`:""}<div class="mv"><button data-up="${t.id}" title="Subir">▲</button><button data-down="${t.id}" title="Bajar">▼</button></div></div>
+      </div>`).join("")}</div>` : `<div class="card empty">No hay tickets abiertos en la cola. 🎉</div>`}`;
+  $("#recargar").onclick = refrescar;
+  $("#solomios").onchange = e => { S.soloMios = e.target.checked; vInicio(); };
+  $$("[data-k]").forEach(b => b.onclick = () => { const f = k[+b.dataset.k][3]; if(!f) return;
+    S.f = {vista:"abiertos", q:"", tipo:"", prioridad:"", asignado: rol()==="encargado" && misAb.length ? "yo" : "", solicitante:"", desde:"", hasta:"", alerta:"", ...f}; S.tab = "tickets"; pintarApp(); });
+  $$("#queue [data-open]").forEach(el => el.onclick = () => abrirDetalle(+el.dataset.open));
+  $$("[data-close]").forEach(b => b.onclick = e => { e.stopPropagation(); abrirCierre(+b.dataset.close); });
+  const mover = async (id, d) => { const ids = $$("#queue .qi").map(x => +x.dataset.id); const i = ids.indexOf(id), j = i+d;
+    if(j<0 || j>=ids.length) return; [ids[i], ids[j]] = [ids[j], ids[i]]; await guardarOrden(ids); };
+  $$("[data-up]").forEach(b => b.onclick = () => mover(+b.dataset.up, -1));
+  $$("[data-down]").forEach(b => b.onclick = () => mover(+b.dataset.down, 1));
+  if(window.Sortable && $("#queue")) Sortable.create($("#queue"), {handle:".hd", animation:160, ghostClass:"ghost", chosenClass:"chosen",
+    onEnd: () => guardarOrden($$("#queue .qi").map(x => +x.dataset.id))});
+}
+async function guardarOrden(idsVisibles){
+  // Si la lista está filtrada, se reacomodan solo esas posiciones dentro de la cola completa
+  const global = colaGlobal().map(t => t.id), set = new Set(idsVisibles); let k = 0;
+  const nuevo = global.map(id => set.has(id) ? idsVisibles[k++] : id);
+  nuevo.forEach((id,i) => { const t = S.tickets.find(x => x.id===id); if(t) t.orden = i+1; });
+  vInicio();
+  try{ await API.reordenar(nuevo); }catch(e){ fallo(e); refrescar(); }
+}
+
+/* =====================================================================
+   Tickets: vistas abiertas / cerradas con filtros
+   ===================================================================== */
+function filtrar(){
+  const f = S.f, q = lower(f.q);
+  return S.tickets.filter(t => {
+    const c = esCerrado(t);
+    if(f.vista==="abiertos" && c) return false;
+    if(f.vista==="cerrados" && !c) return false;
+    if(!["abiertos","cerrados","todos"].includes(f.vista) && t.estado!==f.vista) return false;
+    if(q && !lower([t.codigo,t.titulo,t.cliente,t.descripcion,t.linea_producto,t.solicitante_email,nombreDe(t.solicitante_email)].join(" ")).includes(q)) return false;
+    if(f.tipo && t.tipo!==f.tipo) return false;
+    if(f.prioridad==="altas" && !["Alta","Urgente"].includes(t.prioridad)) return false;
+    if(f.prioridad && f.prioridad!=="altas" && t.prioridad!==f.prioridad) return false;
+    if(f.asignado==="yo" && lower(t.asignado_email)!==S.me.email) return false;
+    if(f.asignado==="sin" && t.asignado_email) return false;
+    if(f.asignado && !["yo","sin"].includes(f.asignado) && lower(t.asignado_email)!==f.asignado) return false;
+    if(f.solicitante && lower(t.solicitante_email)!==f.solicitante) return false;
+    const fd = f.vista==="cerrados" ? dia(t.cerrado_at) : dia(t.created_at);
+    if(f.desde && fd < f.desde) return false;
+    if(f.hasta && fd > f.hasta) return false;
+    const a = alertaDe(t);
+    if(f.alerta==="cualquiera" && !a) return false;
+    if(f.alerta && f.alerta!=="cualquiera" && a!==f.alerta) return false;
+    return true;
+  });
+}
+function tablaTickets(lista, cerrada=false){
+  if(!lista.length) return `<div class="tbl-wrap"><div class="empty">No hay tickets con esos filtros.</div></div>`;
+  return `<div class="tbl-wrap"><table><thead><tr>
+    <th>Ticket</th><th>Solicitud</th><th>Solicitante</th><th>Prioridad</th><th>Estado</th><th>Asignado</th>
+    ${cerrada ? `<th>Cerrado</th><th class="r">Días</th><th class="r">Horas</th>` : `<th>ETA</th><th>Vence</th><th></th>`}
+    </tr></thead><tbody>${lista.map(t => `<tr class="click" data-open="${t.id}">
+      <td class="code">${esc(t.codigo)}</td>
+      <td><div class="b">${esc(t.titulo)}</div><div class="sub">${esc(tipoTxt(t))}${t.cliente?` · ${esc(t.cliente)}`:""}</div></td>
+      <td class="small">${esc(nombreDe(t.solicitante_email))}</td><td>${tagPrio(t.prioridad)}</td><td>${tagEstado(t.estado)} ${tagAprob(t)}</td>
+      <td class="small">${esc(t.asignado_email ? nombreDe(t.asignado_email) : "Sin asignar")}</td>
+      ${cerrada ? `<td class="small num">${fFecha(t.cerrado_at)}</td><td class="r num">${t.cerrado_at?diasEntre(t.created_at,t.cerrado_at):"—"}</td><td class="r num">${t.horas_ejecucion!=null?fNum(t.horas_ejecucion,2):"—"}</td>`
+        : `<td class="small num">${fFecha(t.fecha_eta)}</td><td class="small num">${fFecha(t.fecha_vencimiento)}</td><td>${tagAlerta(alertaDe(t))}</td>`}
+      </tr>`).join("")}</tbody></table></div>`;
+}
+function vTickets(){
+  const f = S.f;
+  const staffUs = S.usuarios.filter(u => ["encargado","manager","admin"].includes(u.rol));
+  const sols = [...new Set(S.tickets.map(t => lower(t.solicitante_email)))].filter(Boolean);
+  const nA = S.tickets.filter(t=>!esCerrado(t)).length, nC = S.tickets.length - nA;
+  const vistaBase = ["abiertos","cerrados","todos"].includes(f.vista) ? f.vista : "abiertos";
+  $("#main").innerHTML = `
+    <div class="page-h"><div class="grow"><h1>Tickets</h1><p class="muted small">Solicitudes especiales (no SPA, SPE ni SDE).</p></div>
+      <div class="seg" id="seg">${[["abiertos",`Abiertos (${nA})`],["cerrados",`Cerrados (${nC})`],["todos","Todos"]].map(([k,l]) => `<button data-v="${k}" class="${vistaBase===k && ["abiertos","cerrados","todos"].includes(f.vista)?"on":""}">${l}</button>`).join("")}</div>
+      <button class="btn sm" id="csv">Exportar CSV</button><button class="btn sm" id="recargar">Actualizar</button></div>
+    <div class="filters">
+      <input type="search" id="fq" placeholder="Buscar código, título, cliente…" value="${esc(f.q)}">
+      <select id="fest"><option value="${vistaBase}">Cualquier estado</option>${ESTADOS.map(x=>`<option ${f.vista===x?"selected":""}>${x}</option>`).join("")}</select>
+      <select id="ftipo"><option value="">Todos los tipos</option>${TIPOS.map(x=>`<option ${f.tipo===x?"selected":""}>${esc(x)}</option>`).join("")}</select>
+      <select id="fprio"><option value="">Toda prioridad</option><option value="altas" ${f.prioridad==="altas"?"selected":""}>Alta o urgente</option>${PRIORIDADES.map(x=>`<option ${f.prioridad===x?"selected":""}>${x}</option>`).join("")}</select>
+      <select id="fasig"><option value="">Cualquier responsable</option><option value="yo" ${f.asignado==="yo"?"selected":""}>Asignados a mí</option><option value="sin" ${f.asignado==="sin"?"selected":""}>Sin asignar</option>${staffUs.map(u=>`<option value="${esc(lower(u.email))}" ${f.asignado===lower(u.email)?"selected":""}>${esc(u.nombre||u.email)}</option>`).join("")}</select>
+      <select id="fsol"><option value="">Cualquier solicitante</option>${sols.map(e=>`<option value="${esc(e)}" ${f.solicitante===e?"selected":""}>${esc(nombreDe(e))}</option>`).join("")}</select>
+      <label class="f" style="font-weight:500">${f.vista==="cerrados"?"Cerrado":"Ingresado"} desde<input type="date" id="fdesde" value="${f.desde}"></label>
+      <label class="f" style="font-weight:500">hasta<input type="date" id="fhasta" value="${f.hasta}"></label>
+      <select id="falerta"><option value="">Con o sin alerta</option><option value="cualquiera" ${f.alerta==="cualquiera"?"selected":""}>Con alguna alerta</option>${["Vencido","Por vencer","ETA superada","Aprobación demorada"].map(x=>`<option ${f.alerta===x?"selected":""}>${x}</option>`).join("")}</select>
+    </div>
+    <div class="row" style="margin-bottom:8px"><span class="small muted grow" id="cuenta"></span><button class="btn ghost sm" id="limpiar">Limpiar filtros</button></div>
+    <div id="lista"></div>`;
+  const pintar = () => { const l = filtrar(); $("#cuenta").textContent = `${l.length} ticket${l.length===1?"":"s"}`;
+    $("#lista").innerHTML = tablaTickets(l, S.f.vista==="cerrados" || CERRADOS.includes(S.f.vista));
+    $$("#lista [data-open]").forEach(el => el.onclick = () => abrirDetalle(+el.dataset.open)); };
+  const leer = () => { S.f = {vista:$("#fest").value, q:$("#fq").value, tipo:$("#ftipo").value, prioridad:$("#fprio").value, asignado:$("#fasig").value,
+    solicitante:$("#fsol").value, desde:$("#fdesde").value, hasta:$("#fhasta").value, alerta:$("#falerta").value}; pintar(); };
+  $("#fq").oninput = leer; ["#fest","#ftipo","#fprio","#fasig","#fsol","#fdesde","#fhasta","#falerta"].forEach(s => $(s).onchange = leer);
+  $$("#seg button").forEach(b => b.onclick = () => { S.f.vista = b.dataset.v; vTickets(); });
+  $("#limpiar").onclick = () => { S.f = {vista:vistaBase, q:"", tipo:"", prioridad:"", asignado:"", solicitante:"", desde:"", hasta:"", alerta:""}; vTickets(); };
+  $("#recargar").onclick = refrescar;
+  $("#csv").onclick = () => exportarCSV(filtrar().map(filaReporte), `tickets_pricing_${hoy()}.csv`);
+  pintar();
+}
+function filaReporte(t){
+  const cerr = !!t.cerrado_at, h = hoy(); let sla = "Sin fecha";
+  if(t.fecha_vencimiento){
+    if(!cerr) sla = t.fecha_vencimiento < h ? "Vencido" : t.fecha_vencimiento <= sumarDias(h, +S.cfg.app.dias_alerta||3) ? "Por vencer" : "En plazo";
+    else sla = dia(t.cerrado_at) > t.fecha_vencimiento ? "Cerrado fuera de plazo" : "Cerrado en plazo";
+  }
+  return {origen:"Pricing especial", numero:t.codigo, tipo_solicitud:t.tipo, tipo_detalle:t.tipo_otro||"", titulo:t.titulo, cliente:t.cliente||"",
+    linea_producto:t.linea_producto||"", prioridad:t.prioridad, estado:t.estado, estado_general:cerr?"Cerrado":"Abierto",
+    solicitante_email:t.solicitante_email||"", asignado_email:t.asignado_email||"", cerrado_por:t.cerrado_por||"",
+    fecha_solicitud:dia(t.created_at), fecha_eta:t.fecha_eta||"", fecha_vencimiento:t.fecha_vencimiento||"", fecha_cierre:cerr?dia(t.cerrado_at):"",
+    dias_abierto:diasEntre(t.created_at, cerr?t.cerrado_at:h), estado_sla:sla, horas_ejecucion:t.horas_ejecucion??"",
+    requiere_aprobacion:t.requiere_aprobacion?"Sí":"No", aprob_estado:t.aprob_estado, aprob_email:t.aprob_email||"",
+    monto_impacto:t.monto_impacto??"", moneda:t.moneda||"", descuento_pct:t.descuento_pct??""};
+}
+function exportarCSV(filas, nombre){
+  if(!filas.length) return toast("No hay filas para exportar", true);
+  const cols = Object.keys(filas[0]);
+  const q = v => { const s = String(v ?? ""); return /[;"\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s; };
+  const csv = "\ufeff" + [cols.join(";"), ...filas.map(x => cols.map(c => q(x[c])).join(";"))].join("\r\n");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+  a.download = nombre; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+/* =====================================================================
+   Gráficos (SVG, paleta Legrand)
+   ===================================================================== */
+const COL = {green:"var(--green)", olive:"var(--olive)", slate:"var(--slate)", brick:"var(--brick)"};
+function niceMax(v){ if(v<=0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); const n = v/p; return (n<=1?1:n<=2?2:n<=5?5:10)*p; }
+function columnas({labels, series, fmt = v => fNum(v,0), alto = 220, etiquetas = true}){
+  const W = 640, H = alto, padL = 36, padB = 26, padT = 18, n = labels.length, k = series.length;
+  const max = niceMax(Math.max(0, ...series.flatMap(s => s.values)));
+  const gw = (W - padL) / Math.max(n,1), bw = Math.min(26, (gw*0.7) / k), gap = 2;
+  const y = v => padT + (H - padT - padB) * (1 - v/max);
+  let g = "";
+  for(let i=0;i<=4;i++){ const v = max*i/4, yy = y(v); g += `<line class="gl" x1="${padL}" x2="${W}" y1="${yy}" y2="${yy}"/><text class="ax" x="${padL-6}" y="${yy+4}" text-anchor="end">${fmt(v)}</text>`; }
+  labels.forEach((l,i) => {
+    const cx = padL + gw*i + gw/2, x0 = cx - (bw*k + gap*(k-1))/2;
+    let col = `<g class="col"><title>${esc(l)}\n${series.map(s => `${s.name}: ${fmt(s.values[i])}`).join("\n")}</title><rect class="hit" x="${padL+gw*i}" y="${padT}" width="${gw}" height="${H-padT-padB}"/>`;
+    series.forEach((s,j) => { const v = s.values[i]||0, x = x0 + j*(bw+gap), yy = y(v), h = (H-padB) - yy, r = Math.min(4, h, bw/2);
+      if(h > 0) col += `<path class="bar" fill="${s.color}" d="M${x},${H-padB} L${x},${yy+r} Q${x},${yy} ${x+r},${yy} L${x+bw-r},${yy} Q${x+bw},${yy} ${x+bw},${yy+r} L${x+bw},${H-padB} Z"/>`;
+      if(etiquetas && v>0 && n<=12) col += `<text class="vl" x="${x+bw/2}" y="${yy-5}" text-anchor="middle">${fmt(v)}</text>`; });
+    col += `<text class="ax" x="${cx}" y="${H-8}" text-anchor="middle">${esc(l)}</text></g>`;
+    g += col;
+  });
+  const ley = k > 1 ? `<div class="legend">${series.map(s => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join("")}</div>` : "";
+  return `<div class="chart">${ley}<svg viewBox="0 0 ${W} ${H}" role="img">${g}</svg></div>`;
+}
+function barras(rows, fmt = v => fNum(v,0), color = COL.green){
+  if(!rows.length) return `<div class="muted small">Sin datos en el período</div>`;
+  const max = Math.max(...rows.map(r => r[1]), 1);
+  return `<div class="bars">${rows.map(([l,v,extra]) => `<div class="bar" title="${esc(l)}: ${fmt(v)}"><span class="lbl">${esc(l)}</span><span class="val num">${fmt(v)}${extra?` <span class="muted" style="font-weight:500">${extra}</span>`:""}</span><div class="trk"><div class="fil" style="width:${v/max*100}%;background:${color}"></div></div></div>`).join("")}</div>`;
+}
+function rangoDesde(r){ const d = new Date(); if(r==="ano") return `${d.getFullYear()}-01-01`; d.setMonth(d.getMonth() - (+r) + 1); d.setDate(1); return ymd(d); }
+function mesesDesde(desde){ const out = []; const d = new Date(desde+"T12:00:00"); d.setDate(1); const fin = hoy().slice(0,7);
+  while(ymd(d).slice(0,7) <= fin){ out.push(ymd(d).slice(0,7)); d.setMonth(d.getMonth()+1); } return out; }
+
+/* =====================================================================
+   Analítica (Manager Pricing)
+   ===================================================================== */
+function vAnalitica(){
+  const desde = rangoDesde(S.an.rango), meses = mesesDesde(desde), T = S.tickets;
+  const ing = T.filter(t => dia(t.created_at) >= desde), cer = T.filter(t => t.cerrado_at && dia(t.cerrado_at) >= desde);
+  const abiertos = T.filter(t => !esCerrado(t)), hr = S.horas.filter(x => dia(x.fecha) >= desde);
+  const totH = hr.reduce((s,x)=>s+Number(x.horas),0);
+  const lead = cer.length ? cer.reduce((s,t)=>s+diasEntre(t.created_at,t.cerrado_at),0)/cer.length : null;
+  const conFecha = cer.filter(t => t.fecha_vencimiento), enPlazo = conFecha.filter(t => dia(t.cerrado_at) <= t.fecha_vencimiento).length;
+  const pct = conFecha.length ? enPlazo/conFecha.length*100 : null;
+  const completados = cer.filter(t => t.estado==="Completado").length;
+  const kpis = [["Ingresados", ing.length, "k-slate"], ["Cerrados", cer.length, "k-green"], ["Abiertos hoy", abiertos.length, "k-olive"],
+    ["Días promedio de atención", lead==null?"—":fNum(lead,1), "k-slate"], ["Cerrados en plazo", pct==null?"—":fNum(pct,0)+" %", pct!=null&&pct<80?"k-brick":"k-green"],
+    ["Horas registradas", fNum(totH,1), "k-slate"], ["Horas promedio por ticket", cer.length?fNum(totH/Math.max(cer.length,1),1):"—", "k-slate"]];
+  const porMes = k => meses.map(m => k(m));
+  const sIng = porMes(m => T.filter(t => mesKey(t.created_at)===m).length), sCer = porMes(m => T.filter(t => t.cerrado_at && mesKey(t.cerrado_at)===m).length);
+  const sHor = porMes(m => S.horas.filter(x => mesKey(x.fecha)===m).reduce((s,x)=>s+Number(x.horas),0));
+  const tktById = new Map(T.map(t => [t.id, t]));
+  const hTipo = TIPOS.map(tp => { const xs = hr.filter(x => tktById.get(x.ticket_id)?.tipo===tp); return [tp, xs.reduce((s,x)=>s+Number(x.horas),0), xs.length]; }).filter(r=>r[2]);
+  const aging = [["0–3 días",0,3],["4–7 días",4,7],["8–15 días",8,15],["16–30 días",16,30],["Más de 30",31,1e9]].map(([l,a,b]) => [l, abiertos.filter(t => { const d = diasEntre(t.created_at, hoy()); return d>=a && d<=b; }).length]);
+  const abTipo = TIPOS.map(tp => [tp, abiertos.filter(t=>t.tipo===tp).length]).filter(r=>r[1]).sort((a,b)=>b[1]-a[1]);
+  const res = ["Completado","Rechazado","Cancelado"].map(r => [r, cer.filter(t=>t.estado===r).length]);
+  const tabla = TIPOS.map(tp => { const i = ing.filter(t=>t.tipo===tp), c = cer.filter(t=>t.tipo===tp), h = hTipo.find(x=>x[0]===tp);
+    return {tp, ing:i.length, cer:c.length, ab:abiertos.filter(t=>t.tipo===tp).length, dias:c.length?c.reduce((s,t)=>s+diasEntre(t.created_at,t.cerrado_at),0)/c.length:null,
+      horas:h?h[1]:0, hprom:c.length&&h?h[1]/c.length:null}; }).filter(r => r.ing || r.cer || r.ab);
+  const apr = T.filter(t => t.aprob_resuelto_at && dia(t.aprob_resuelto_at) >= desde);
+  const aprDias = apr.length ? apr.reduce((s,t)=>s+(new Date(t.aprob_resuelto_at)-new Date(t.aprob_enviado_at))/864e5,0)/apr.length : null;
+  $("#main").innerHTML = `
+    <div class="page-h"><div class="grow"><h1>Analítica de Pricing</h1><p class="muted small">Desde ${fFecha(desde)} · ${ing.length} ingresados, ${cer.length} cerrados</p></div>
+      <div class="seg" id="rg">${[["3","3 meses"],["6","6 meses"],["12","12 meses"],["ano","Este año"]].map(([k,l]) => `<button data-r="${k}" class="${S.an.rango===k?"on":""}">${l}</button>`).join("")}</div></div>
+    <div class="grid kpis">${kpis.map(([l,v,c]) => `<div class="kpi ${c}"><div class="v num">${v}</div><div class="l">${l}</div></div>`).join("")}</div>
+    <div class="grid halves" style="margin-top:14px">
+      <div class="card"><h2>Ingresados vs. cerrados por mes</h2>${columnas({labels:meses.map(mesLbl), series:[{name:"Ingresados", color:COL.slate, values:sIng},{name:"Cerrados", color:COL.green, values:sCer}]})}</div>
+      <div class="card"><h2>Horas de ejecución registradas por mes</h2>${columnas({labels:meses.map(mesLbl), series:[{name:"Horas", color:COL.green, values:sHor}], fmt:v=>fNum(v,0)})}</div>
+      <div class="card"><h2>Horas por tipo de solicitud</h2><p class="hint" style="margin-top:-6px">Total del período y promedio por ticket</p>
+        ${barras(hTipo.sort((a,b)=>b[1]-a[1]).map(([l,v,n]) => [l, v, `· ${fNum(v/n,1)} h/ticket`]), v=>fNum(v,1)+" h")}</div>
+      <div class="card"><h2>Antigüedad de los tickets abiertos</h2>${columnas({labels:aging.map(a=>a[0]), series:[{name:"Tickets", color:COL.olive, values:aging.map(a=>a[1])}], alto:200})}</div>
+      <div class="card"><h2>Abiertos por tipo</h2>${barras(abTipo, v=>fNum(v,0), COL.slate)}</div>
+      <div class="card"><h2>Resultado de los cierres</h2>
+        ${cer.length ? `<div class="split" style="margin:6px 0 12px">${res.filter(r=>r[1]).map(([l,v]) => `<div title="${l}: ${v}" style="width:${v/cer.length*100}%;background:${l==="Completado"?COL.green:l==="Rechazado"?COL.brick:COL.slate}"></div>`).join("")}</div>
+        <div class="legend">${res.map(([l,v]) => `<span><i style="background:${l==="Completado"?COL.green:l==="Rechazado"?COL.brick:COL.slate}"></i>${l}: <b>${v}</b> (${fNum(v/cer.length*100,0)} %)</span>`).join("")}</div>` : `<div class="muted small">Sin cierres en el período</div>`}
+        <div class="kv" style="margin-top:14px"><dt>Completados</dt><dd>${completados}</dd><dt>Con ${esc(aprobTitulo())}</dt><dd>${apr.length} resueltas${aprDias!=null?` · ${fNum(aprDias,1)} días promedio de respuesta`:""}</dd></div></div>
+    </div>
+    <div class="card" style="margin-top:14px;padding:0;overflow:hidden"><div style="padding:16px 16px 0"><h2>Resumen por tipo</h2></div>
+      <div class="tbl-wrap" style="border:0;border-radius:0"><table><thead><tr><th>Tipo de solicitud</th><th class="r">Ingresados</th><th class="r">Cerrados</th><th class="r">Abiertos</th><th class="r">Días prom.</th><th class="r">Horas</th><th class="r">Horas/ticket</th></tr></thead>
+      <tbody>${tabla.map(r => `<tr><td>${esc(r.tp)}</td><td class="r num">${r.ing}</td><td class="r num">${r.cer}</td><td class="r num">${r.ab}</td><td class="r num">${r.dias==null?"—":fNum(r.dias,1)}</td><td class="r num">${fNum(r.horas,1)}</td><td class="r num">${r.hprom==null?"—":fNum(r.hprom,1)}</td></tr>`).join("") || `<tr><td colspan="7" class="empty">Sin datos</td></tr>`}</tbody></table></div></div>`;
+  $$("#rg button").forEach(b => b.onclick = () => { S.an.rango = b.dataset.r; vAnalitica(); });
+}
+
+/* =====================================================================
+   Registro de horas
+   ===================================================================== */
+function vHoras(){
+  const desde = rangoDesde(S.hr.rango), tk = new Map(S.tickets.map(t => [t.id,t]));
+  const hr = S.horas.filter(x => dia(x.fecha) >= desde && (!S.hr.quien || lower(x.usuario_email)===S.hr.quien)).sort((a,b) => b.fecha.localeCompare(a.fecha));
+  const quienes = [...new Set(S.horas.map(x => lower(x.usuario_email)))];
+  const semanas = []; let d = lunesDe(desde); const fin = lunesDe(hoy());
+  while(d <= fin){ semanas.push(d); d = sumarDias(d, 7); }
+  const sSem = semanas.map(w => hr.filter(x => lunesDe(x.fecha)===w).reduce((s,x)=>s+Number(x.horas),0));
+  const porQuien = quienes.map(q => [nombreDe(q), hr.filter(x=>lower(x.usuario_email)===q).reduce((s,x)=>s+Number(x.horas),0)]).filter(r=>r[1]).sort((a,b)=>b[1]-a[1]);
+  const total = hr.reduce((s,x)=>s+Number(x.horas),0), nT = new Set(hr.map(x=>x.ticket_id)).size;
+  const lbls = semanas.map(w => { const dd = new Date(w+"T12:00:00"); return `${dd.getDate()} ${MESES[dd.getMonth()]}`; });
+  $("#main").innerHTML = `
+    <div class="page-h"><div class="grow"><h1>Registro de horas</h1><p class="muted small">Tiempo de ejecución que registra Pricing al cerrar cada ticket.</p></div>
+      <select id="hq" style="width:auto"><option value="">Todo el equipo</option>${quienes.map(q=>`<option value="${esc(q)}" ${S.hr.quien===q?"selected":""}>${esc(nombreDe(q))}</option>`).join("")}</select>
+      <div class="seg" id="hrg">${[["1","Este mes"],["3","3 meses"],["6","6 meses"],["12","12 meses"]].map(([k,l]) => `<button data-r="${k}" class="${S.hr.rango===k?"on":""}">${l}</button>`).join("")}</div>
+      <button class="btn sm" id="hcsv">Exportar CSV</button></div>
+    <div class="grid kpis">
+      <div class="kpi k-green"><div class="v num">${fNum(total,1)}</div><div class="l">Horas en el período</div></div>
+      <div class="kpi k-slate"><div class="v num">${nT}</div><div class="l">Tickets con horas</div></div>
+      <div class="kpi k-slate"><div class="v num">${nT?fNum(total/nT,1):"—"}</div><div class="l">Horas promedio por ticket</div></div>
+      <div class="kpi k-olive"><div class="v num">${semanas.length?fNum(total/semanas.length,1):"—"}</div><div class="l">Horas promedio por semana</div></div>
+    </div>
+    <div class="grid two" style="margin-top:14px">
+      <div class="card"><h2>Horas por semana</h2>${columnas({labels:lbls, series:[{name:"Horas", color:COL.green, values:sSem}], fmt:v=>fNum(v,0), etiquetas:semanas.length<=14})}</div>
+      <div class="card"><h2>Horas por persona</h2>${barras(porQuien, v=>fNum(v,1)+" h")}</div>
+    </div>
+    <h2 style="margin-top:18px">Detalle</h2>
+    ${hr.length ? `<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Ticket</th><th>Tipo</th><th>Registrado por</th><th>Nota</th><th class="r">Horas</th></tr></thead>
+      <tbody>${hr.slice(0,300).map(x => { const t = tk.get(x.ticket_id); return `<tr class="click" data-open="${x.ticket_id}"><td class="small num">${fFecha(x.fecha)}</td>
+        <td><span class="code">${esc(t?.codigo||"")}</span> <span class="small">${esc(t?.titulo||"")}</span></td><td class="small">${esc(t?.tipo||"")}</td>
+        <td class="small">${esc(nombreDe(x.usuario_email))}</td><td class="small">${esc(x.nota||"")}</td><td class="r num b">${fHoras(x.horas)}</td></tr>`; }).join("")}</tbody></table></div>`
+      : `<div class="card empty">Sin horas registradas en el período.</div>`}`;
+  $$("#hrg button").forEach(b => b.onclick = () => { S.hr.rango = b.dataset.r; vHoras(); });
+  $("#hq").onchange = e => { S.hr.quien = e.target.value; vHoras(); };
+  $$("[data-open]").forEach(el => el.onclick = () => abrirDetalle(+el.dataset.open));
+  $("#hcsv").onclick = () => exportarCSV(hr.map(x => { const t = tk.get(x.ticket_id); return {fecha:dia(x.fecha), numero:t?.codigo||"", tipo_solicitud:t?.tipo||"", titulo:t?.titulo||"", cliente:t?.cliente||"", registrado_por:x.usuario_email, nota:x.nota||"", horas:x.horas}; }), `horas_pricing_${hoy()}.csv`);
+}
+
+/* =====================================================================
+   Aprobaciones
+   ===================================================================== */
+function vAprobaciones(){
+  const pend = misAprobaciones().concat(rol()==="admin" ? S.tickets.filter(t => t.aprob_estado==="Pendiente" && lower(t.aprob_email)!==S.me.email) : []);
+  const hechas = S.tickets.filter(t => lower(t.aprob_resuelto_por)===S.me.email || (lower(t.aprob_email)===S.me.email && ["Aprobado","Rechazado"].includes(t.aprob_estado))).slice(0,40);
+  $("#main").innerHTML = `
+    <div class="page-h"><div class="grow"><h1>${esc(aprobTitulo())}</h1><p class="muted small">Solicitudes de Pricing que esperan tu decisión.</p></div></div>
+    ${pend.length ? `<div class="grid" style="gap:12px">${pend.map(t => `<div class="card">
+        <div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span>${tagPrio(t.prioridad)}${tagAlerta(alertaDe(t))}<span class="sub grow">enviada ${hace(t.aprob_enviado_at)}${lower(t.aprob_email)!==S.me.email?` · para ${esc(nombreDe(t.aprob_email))}`:""}</span></div>
+        <h2 style="margin:6px 0 2px">${esc(t.titulo)}</h2>
+        <div class="sub" style="margin-bottom:10px">${esc(tipoTxt(t))} · solicitado por ${esc(nombreDe(t.solicitante_email))}</div>
+        <dl class="kv"><dt>Cliente</dt><dd>${esc(t.cliente||"—")}</dd><dt>Monto de impacto</dt><dd>${t.monto_impacto!=null?fNum(t.monto_impacto)+" "+esc(t.moneda||""):"—"}</dd>
+          <dt>Descuento</dt><dd>${t.descuento_pct!=null?fNum(t.descuento_pct)+" %":"—"}</dd><dt>Vencimiento</dt><dd>${fFecha(t.fecha_vencimiento)}</dd></dl>
+        ${t.descripcion?`<div class="desc" style="margin-top:10px">${esc(t.descripcion)}</div>`:""}
+        <label class="f" style="margin-top:12px">Comentario (obligatorio si rechazas)<textarea data-com="${t.id}" rows="2"></textarea></label>
+        <div class="actions" style="margin-top:10px"><button class="btn pri" data-ok="${t.id}">Aprobar</button><button class="btn danger" data-no="${t.id}">Rechazar</button><button class="btn ghost" data-open="${t.id}">Ver ticket completo</button></div>
+      </div>`).join("")}</div>` : `<div class="card empty">No tienes aprobaciones pendientes. ✔</div>`}
+    <h2 style="margin-top:22px">Resueltas</h2>${tablaTickets(hechas, true)}`;
+  $$("[data-open]").forEach(el => el.onclick = () => abrirDetalle(+el.dataset.open));
+  const decidir = async (btn, id, dec) => { const com = $(`[data-com="${id}"]`).value.trim();
+    if(dec==="Rechazado" && !com) return toast("Escribe el motivo del rechazo", true);
+    if(!confirm(`¿Confirmas que ${dec==="Aprobado"?"apruebas":"rechazas"} esta solicitud?`)) return;
+    try{ await conBoton(btn, () => API.resolverAprob(id, dec, com)); toast(`Solicitud ${dec==="Aprobado"?"aprobada":"rechazada"}`); await refrescar(); }catch(e){ fallo(e); } };
+  $$("[data-ok]").forEach(b => b.onclick = () => decidir(b, +b.dataset.ok, "Aprobado"));
+  $$("[data-no]").forEach(b => b.onclick = () => decidir(b, +b.dataset.no, "Rechazado"));
+}
+
+/* =====================================================================
+   Usuarios (administrador)
+   ===================================================================== */
+async function vUsuarios(){
+  const us = S.usuarios.slice().sort((a,b) => (b.activo-a.activo) || (a.nombre||"").localeCompare(b.nombre||""));
+  const optRol = sel => Object.entries(ROLES).map(([k,l])=>`<option value="${k}" ${sel===k?"selected":""}>${l}</option>`).join("");
+  const doms = S.cfg.dominios || CFG_DEFAULT.dominios;
+  $("#main").innerHTML = `
+    <div class="page-h"><div class="grow"><h1>Usuarios</h1><p class="muted small">Los solicitantes entran solo con su correo; los demás roles usan correo + PIN (inicial 00000, se cambia al primer ingreso). Un usuario desactivado no puede entrar.</p></div></div>
+    <div id="solic"></div>
+    <div class="card" style="margin-bottom:16px">
+      <h2>Agregar usuario</h2>
+      <form class="form" id="fu" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+        <label class="f">Nombre<input type="text" id="un" required></label>
+        <label class="f">Correo (@${esc(doms.join(", @"))})<input type="email" id="ue" required></label>
+        <label class="f">Rol<select id="ur">${optRol("solicitante")}</select></label>
+        <div class="row" style="align-self:end"><button class="btn pri" type="submit" id="ubtn">Crear y avisarle</button></div>
+      </form>
+    </div>
+    <div class="tbl-wrap"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
+    <tbody>${us.map(u => `<tr data-id="${u.id}" style="${u.activo?"":"opacity:.6"}">
+      <td><input type="text" class="unom" value="${esc(u.nombre||"")}"></td><td class="small">${esc(u.email)}</td>
+      <td><select class="urol">${optRol(u.rol)}</select></td>
+      <td>${u.activo?`<span class="tag t-green">Activo</span>`:`<span class="tag t-gray">Inactivo</span>`}</td>
+      <td><div class="actions" style="flex-wrap:nowrap"><button class="btn sm usave">Guardar</button>
+        <button class="btn sm uact">${u.activo?"Desactivar":"Activar"}</button>
+        ${u.rol!=="solicitante" ? `<button class="btn sm ghost upin" title="Vuelve el PIN a 00000">Restablecer PIN</button>` : ""}</div></td></tr>`).join("")}</tbody></table></div>`;
+  const dominioOk = e => doms.includes(lower(e).split("@")[1]);
+  $("#fu").onsubmit = async e => { e.preventDefault();
+    const nombre = $("#un").value.trim(), email = lower($("#ue").value), rolSel = $("#ur").value;
+    if(!dominioOk(email)) return toast(`Solo correos @${doms.join(" o @")}`, true);
+    try{ await conBoton($("#ubtn"), async () => { await API.adminUsuario({accion:"crear", nombre, email, rol:rolSel}); try{ await API.bienvenida(email); }catch(err){} });
+      toast(rolSel==="solicitante" ? `${nombre} ya puede entrar con su correo` : `${nombre} ya puede entrar · PIN inicial 00000`); await recargar(); vUsuarios(); }catch(err){ fallo(err); } };
+  $$("tr[data-id]").forEach(tr => {
+    const id = tr.dataset.id, u = S.usuarios.find(x => x.id===id);
+    $(".usave",tr).onclick = async ev => { try{ await conBoton(ev.currentTarget, () => API.guardarUsuario(id, {nombre:$(".unom",tr).value.trim(), rol:$(".urol",tr).value})); toast("Usuario actualizado"); await recargar(); vUsuarios(); }catch(e){ fallo(e); } };
+    $(".uact",tr).onclick = async ev => {
+      if(u.activo && !confirm(`¿Desactivar a ${u.nombre||u.email}? No podrá entrar.`)) return;
+      try{ await conBoton(ev.currentTarget, () => API.adminUsuario({accion:"estado", id, activo:!u.activo})); toast(u.activo?"Usuario desactivado":"Usuario activado"); await recargar(); vUsuarios(); }catch(e){ fallo(e); } };
+    $(".upin",tr) && ($(".upin",tr).onclick = async ev => {
+      if(!confirm(`¿Restablecer el PIN de ${u.nombre||u.email} a 00000? Deberá cambiarlo al entrar.`)) return;
+      try{ await conBoton(ev.currentTarget, () => API.resetPin(id)); toast(`PIN de ${u.nombre||u.email} restablecido a 00000`); }catch(e){ fallo(e); } });
+  });
+  // Solicitudes de acceso pendientes
+  try{
+    const sol = await API.solicitudesAcceso();
+    if(!sol.length || !$("#solic")) return;
+    $("#solic").innerHTML = `<div class="card" style="margin-bottom:16px;border-color:var(--olive)"><h2>Solicitudes de acceso (${sol.length})</h2>
+      <div class="tbl-wrap"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Motivo</th><th>Fecha</th><th>Rol</th><th></th></tr></thead>
+      <tbody>${sol.map(r => `<tr data-s="${r.id}"><td class="b">${esc(r.nombre||"")}</td><td class="small">${esc(r.email)}</td><td class="small">${esc(r.comentario||"—")}</td>
+        <td class="small num">${fFechaHora(r.created_at)}</td><td><select class="srol">${optRol("solicitante")}</select></td>
+        <td><div class="actions" style="flex-wrap:nowrap"><button class="btn sm pri sok">Dar acceso</button><button class="btn sm sno">Descartar</button></div></td></tr>`).join("")}</tbody></table></div></div>`;
+    $$("tr[data-s]").forEach(tr => { const r = sol.find(x => String(x.id)===tr.dataset.s);
+      $(".sok",tr).onclick = async ev => { try{ await conBoton(ev.currentTarget, async () => {
+          await API.adminUsuario({accion:"crear", nombre:r.nombre, email:r.email, rol:$(".srol",tr).value}); await API.resolverAcceso(r.id, "Aprobada"); });
+        toast(`${r.nombre} ya tiene acceso`); await recargar(); vUsuarios(); }catch(e){ fallo(e); } };
+      $(".sno",tr).onclick = async ev => { if(!confirm(`¿Descartar la solicitud de ${r.email}?`)) return;
+        try{ await conBoton(ev.currentTarget, () => API.resolverAcceso(r.id, "Descartada")); vUsuarios(); }catch(e){ fallo(e); } }; });
+  }catch(e){ console.warn(e); }
+}
+
+/* =====================================================================
+   Configuración (administrador)
+   ===================================================================== */
+async function vConfig(){
+  const c = S.cfg, ap = c.aprobacion, as = c.asignacion, app = c.app;
+  const act = S.usuarios.filter(u => u.activo);
+  const atienden = act.filter(u => ["encargado","manager","admin"].includes(u.rol));
+  const optU = (lista, sel, vacio) => `<option value="">${vacio}</option>` + lista.map(u => `<option value="${esc(lower(u.email))}" ${lower(sel)===lower(u.email)?"selected":""}>${esc(u.nombre||u.email)} · ${ROLES[u.rol]}</option>`).join("");
+  const aprobUser = act.find(u => lower(u.email)===lower(ap.email));
+  $("#main").innerHTML = `
+    <div class="page-h"><div class="grow"><h1>Configuración</h1><p class="muted small">Estos cambios aplican de inmediato para todos.</p></div></div>
+    <div class="grid halves">
+      <div class="card"><h2>Aprobación</h2>
+        <div class="form">
+          <label class="f full">Nombre de la aprobación (se ve en la app y en los correos)<input type="text" id="c_at" value="${esc(ap.titulo)}" placeholder="Aprobación CEO"></label>
+          <label class="f">Nombre del aprobador<input type="text" id="c_an" value="${esc(ap.nombre)}"></label>
+          <label class="f">Cargo<input type="text" id="c_ac" value="${esc(ap.cargo)}" placeholder="CEO"></label>
+          <label class="f full">Usuario aprobador<select id="c_ae">${optU(act, ap.email, "— Selecciona —")}</select></label>
+        </div>
+        ${ap.email && !aprobUser ? `<div class="banner err" style="margin:10px 0 0">El correo ${esc(ap.email)} no es un usuario activo; no podrá entrar a aprobar.</div>` : ""}
+        ${aprobUser && !["aprobador","admin"].includes(aprobUser.rol) ? `<div class="hint" style="margin-top:8px">Sugerencia: asigna a ${esc(aprobUser.nombre)} el rol Aprobador en Usuarios.</div>` : ""}
+        <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn pri" id="g_ap">Guardar</button></div></div>
+
+      <div class="card"><h2>Correo y enlaces</h2>
+        <div class="form">
+          <label class="f full">URL de la app (para el botón "Abrir" de los correos)
+            <div class="row" style="flex-wrap:nowrap"><input type="url" id="c_url" value="${esc(app.app_url)}" placeholder="https://lcadevs.github.io/pricing/"><button class="btn sm" id="c_url_aqui" type="button">Usar esta</button></div></label>
+          <label class="f full">URL del flujo de Power Automate (envío de correos)
+            <input type="password" id="c_flow" value="${esc(c.flow_url||"")}" placeholder="https://prod-00.westus.logic.azure.com/…" autocomplete="off"></label>
+          <label class="f full">Dominios de correo permitidos (separados por coma)<input type="text" id="c_dom" value="${esc((c.dominios||[]).join(", "))}"></label>
+          <label class="f">Días para "por vencer"<input type="number" id="c_d1" min="1" value="${esc(app.dias_alerta)}"></label>
+          <label class="f">Días para "aprobación demorada"<input type="number" id="c_d2" min="1" value="${esc(app.dias_aprob_demora)}"></label>
+          <label class="f">Vencimiento sugerido (días)<input type="number" id="c_d3" min="1" value="${esc(app.dias_venc_default)}"></label>
+        </div>
+        <p class="hint">Sin flujo, las notificaciones igual aparecen en la campana de cada usuario.</p>
+        <div class="row" style="justify-content:flex-end"><button class="btn" id="g_prueba">Enviarme correo de prueba</button><button class="btn pri" id="g_app">Guardar</button></div></div>
+    </div>
+
+    <div class="card" style="margin-top:14px"><h2>Asignación de casos</h2>
+      <p class="hint" style="margin-top:-6px">A quién se asigna cada solicitud nueva. Si un tipo no tiene regla, va al encargado predeterminado.</p>
+      <div class="form" style="grid-template-columns:minmax(0,1fr)"><label class="f">Encargado predeterminado<select id="c_def">${optU(atienden, as.default_email, "Sin asignar (lo toma el equipo)")}</select></label></div>
+      <div class="tbl-wrap" style="margin-top:12px"><table><thead><tr><th>Tipo de solicitud</th><th>Asignar a</th></tr></thead>
+        <tbody>${TIPOS.map((tp,i) => `<tr><td>${esc(tp)}</td><td><select data-tp="${i}">${optU(atienden, (as.por_tipo||{})[tp], "Usar el predeterminado")}</select></td></tr>`).join("")}</tbody></table></div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn pri" id="g_as">Guardar asignación</button></div></div>
+
+    <div class="card" style="margin-top:14px"><h2>Plantillas de correo</h2>
+      <div class="form">
+        <label class="f full">Evento<select id="c_ev">${Object.entries(EVENTOS).map(([k,l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select></label>
+        <label class="f full">Asunto (déjalo vacío para no enviar este aviso)<input type="text" id="c_as"></label>
+        <label class="f full">Cuerpo<textarea id="c_cu" rows="9"></textarea></label>
+        <div class="full"><div class="hint" style="margin-bottom:6px">Variables disponibles (clic para insertar):</div><div class="chips">${VARIABLES.map(v => `<span class="chip" data-var="${v}">{${v}}</span>`).join("")}</div></div>
+      </div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn ghost" id="g_tdef">Restaurar predeterminada</button><button class="btn pri" id="g_tpl">Guardar plantilla</button></div></div>
+
+    <div class="card" style="margin-top:14px;padding:0;overflow:hidden"><div style="padding:16px 16px 0" class="row"><h2 class="grow">Últimos avisos generados</h2><button class="btn sm" id="g_log">Actualizar</button></div>
+      <div id="log" style="padding:0 0 4px"><div class="empty"><span class="spin"></span></div></div></div>`;
+
+  const guardar = async (btn, clave, valor) => { try{ await conBoton(btn, () => API.guardarConfig(clave, valor)); S.cfg[clave] = valor; toast("Configuración guardada"); }catch(e){ fallo(e); } };
+  $("#g_ap").onclick = async e => { const sel = act.find(u => lower(u.email)===$("#c_ae").value);
+    const v = {titulo:$("#c_at").value.trim()||"Aprobación", nombre:$("#c_an").value.trim() || sel?.nombre || "", cargo:$("#c_ac").value.trim(), email:$("#c_ae").value};
+    await guardar(e.currentTarget, "aprobacion", v); vConfig(); };
+  $("#c_ae").onchange = () => { const sel = act.find(u => lower(u.email)===$("#c_ae").value); if(sel && !$("#c_an").value.trim()) $("#c_an").value = sel.nombre||""; };
+  $("#c_url_aqui").onclick = () => $("#c_url").value = location.origin + location.pathname;
+  $("#g_app").onclick = async e => {
+    await guardar(e.currentTarget, "app", {app_url:$("#c_url").value.trim(), dias_alerta:+$("#c_d1").value||3, dias_aprob_demora:+$("#c_d2").value||2, dias_venc_default:+$("#c_d3").value||7});
+    try{ await API.guardarConfig("flow_url", $("#c_flow").value.trim()); S.cfg.flow_url = $("#c_flow").value.trim();
+      const dom = $("#c_dom").value.split(/[,;\s]+/).map(x => lower(x).replace(/^@/,"")).filter(Boolean);
+      if(!dom.length) throw new Error("Debe quedar al menos un dominio permitido");
+      await API.guardarConfig("dominios", dom); S.cfg.dominios = dom; }catch(err){ fallo(err); } };
+  $("#g_prueba").onclick = async e => { try{ await conBoton(e.currentTarget, () => API.pruebaCorreo()); toast(S.cfg.flow_url ? "Correo de prueba enviado al flujo" : "Aviso de prueba creado (sin flujo configurado)"); cargarLog(); await recargar(); }catch(err){ fallo(err); } };
+  $("#g_as").onclick = async e => { const por = {}; $$("[data-tp]").forEach(s => { if(s.value) por[TIPOS[+s.dataset.tp]] = s.value; });
+    await guardar(e.currentTarget, "asignacion", {default_email:$("#c_def").value, por_tipo:por}); };
+  const cargarTpl = () => { const p = S.cfg.plantillas[$("#c_ev").value] || {asunto:"",cuerpo:""}; $("#c_as").value = p.asunto||""; $("#c_cu").value = p.cuerpo||""; };
+  $("#c_ev").onchange = cargarTpl; cargarTpl();
+  let ultimo = $("#c_cu"); $("#c_as").onfocus = () => ultimo = $("#c_as"); $("#c_cu").onfocus = () => ultimo = $("#c_cu");
+  $$("[data-var]").forEach(ch => ch.onclick = () => { const el = ultimo, v = `{${ch.dataset.var}}`, i = el.selectionStart ?? el.value.length;
+    el.value = el.value.slice(0,i) + v + el.value.slice(el.selectionEnd ?? i); el.focus(); el.selectionStart = el.selectionEnd = i + v.length; });
+  $("#g_tdef").onclick = () => { const d = CFG_DEFAULT.plantillas[$("#c_ev").value]; $("#c_as").value = d.asunto; $("#c_cu").value = d.cuerpo; };
+  $("#g_tpl").onclick = async e => { const p = {...S.cfg.plantillas, [$("#c_ev").value]:{asunto:$("#c_as").value, cuerpo:$("#c_cu").value}}; await guardar(e.currentTarget, "plantillas", p); };
+  const cargarLog = async () => { try{ const l = await API.correosLog();
+    $("#log").innerHTML = l.length ? `<div class="tbl-wrap" style="border:0;border-radius:0"><table><thead><tr><th>Fecha</th><th>Evento</th><th>Para</th><th>Asunto</th><th>Correo</th></tr></thead><tbody>${l.map(n => `<tr><td class="small num">${fFechaHora(n.created_at)}</td><td class="small">${esc(n.evento)}</td><td class="small">${esc(nombreDe(n.para_email))}</td><td class="small">${esc(n.asunto)}</td><td>${n.correo==="Error"?`<span class="tag t-brick" title="${esc(n.error_envio||"")}">Error</span>`:n.correo==="Sin flujo"?`<span class="tag t-gray">Sin flujo</span>`:`<span class="tag t-green">${esc(n.correo)}</span>`}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">Aún no hay avisos.</div>`;
+  }catch(e){ $("#log").innerHTML = `<div class="empty">${esc(e.message)}</div>`; } };
+  $("#g_log").onclick = cargarLog; cargarLog();
+}
+
+/* =====================================================================
+   Modales
+   ===================================================================== */
+function modal(html, cls=""){
+  $("#modal-root").innerHTML = `<div class="ov" id="ov"><div class="modal ${cls}">${html}</div></div>`;
+  $("#ov").onmousedown = e => { if(e.target.id==="ov") cerrarModal(); };
+  $$("#modal-root .x").forEach(b => b.onclick = cerrarModal);
+  document.onkeydown = e => { if(e.key==="Escape") cerrarModal(); };
+}
+function cerrarModal(){ $("#modal-root").innerHTML = ""; document.onkeydown = null; }
+const opcionesAtienden = sel => `<option value="">Sin asignar</option>` + S.usuarios.filter(u => ["encargado","manager","admin"].includes(u.rol) && u.activo)
+  .map(u => `<option value="${esc(lower(u.email))}" ${lower(sel)===lower(u.email)?"selected":""}>${esc(u.nombre||u.email)}</option>`).join("");
+
+/* ---------- Nueva solicitud ---------- */
+function abrirNuevo(){
+  const ap = S.cfg.aprobacion, hayAprob = !!ap.email;
+  modal(`
+    <div class="modal-h"><div><h1>Nueva solicitud de Pricing</h1><div class="muted small">Para solicitudes que no son SPA, SPE ni SDE.</div></div><button class="x">×</button></div>
+    <form class="form" id="fnuevo">
+      <label class="f full">Tipo de solicitud<select id="ntipo" required>${TIPOS.map(x=>`<option>${esc(x)}</option>`).join("")}</select></label>
+      <label class="f full hidden" id="notro-w">Especifica el tipo<input type="text" id="notro"></label>
+      <label class="f full">Título<input type="text" id="ntit" required maxlength="160" placeholder="Resumen corto de la solicitud"></label>
+      <label class="f full">Descripción y justificación<textarea id="ndesc" rows="4" placeholder="Contexto, alcance, condiciones comerciales, competencia…"></textarea></label>
+      <label class="f">Cliente / canal<input type="text" id="ncli"></label>
+      <label class="f">Línea de producto<input type="text" id="nlin"></label>
+      <label class="f">Prioridad sugerida<select id="nprio">${PRIORIDADES.map(x=>`<option ${x==="Media"?"selected":""}>${x}</option>`).join("")}</select></label>
+      <label class="f">La necesito para<input type="date" id="nven" value="${sumarDias(hoy(), +S.cfg.app.dias_venc_default||7)}"></label>
+      <label class="f">Monto de impacto estimado<input type="number" id="nmon" step="0.01" min="0"></label>
+      <label class="f">Moneda<select id="nmoneda">${MONEDAS.map(m=>`<option>${m}</option>`).join("")}</select></label>
+      <label class="f">Descuento solicitado %<input type="number" id="ndpct" step="0.01" min="0" max="100"></label>
+      ${staff() ? `<label class="f">Asignar a<select id="nasig"><option value="">Según reglas de asignación</option>${opcionesAtienden("").replace(/^<option value="">Sin asignar<\/option>/,"")}</select></label>` : `<div></div>`}
+      ${hayAprob ? `<div class="full box ap"><label class="check"><input type="checkbox" id="nap"> Requiere ${esc(ap.titulo)}${ap.nombre?` (${esc(ap.nombre)})`:""}</label>
+        <div class="hint" style="margin-top:6px">Al crearla se le enviará la solicitud para aprobar o rechazar.</div>
+        <label class="f hidden" id="nnota-w" style="margin-top:8px">Nota para el aprobador (opcional)<textarea id="nnota" rows="2"></textarea></label></div>` : ""}
+      <div class="full row" style="justify-content:flex-end"><button type="button" class="btn" id="ncancel">Cancelar</button><button class="btn pri" type="submit" id="ncrear">Enviar solicitud</button></div>
+    </form>`);
+  $("#ncancel").onclick = cerrarModal;
+  $("#ntipo").onchange = () => $("#notro-w").classList.toggle("hidden", $("#ntipo").value!=="Otros");
+  $("#nap") && ($("#nap").onchange = () => $("#nnota-w").classList.toggle("hidden", !$("#nap").checked));
+  $("#fnuevo").onsubmit = async e => {
+    e.preventDefault();
+    const num = v => v==="" ? null : Number(v);
+    const t = {tipo:$("#ntipo").value, tipo_otro:$("#ntipo").value==="Otros" ? $("#notro").value.trim()||null : null,
+      titulo:$("#ntit").value.trim(), descripcion:$("#ndesc").value.trim(), cliente:$("#ncli").value.trim()||null,
+      linea_producto:$("#nlin").value.trim()||null, prioridad:$("#nprio").value, fecha_vencimiento:$("#nven").value||null,
+      monto_impacto:num($("#nmon").value), moneda:$("#nmoneda").value, descuento_pct:num($("#ndpct").value)};
+    if($("#nasig")?.value) t.asignado_email = $("#nasig").value;
+    try{
+      await conBoton($("#ncrear"), async () => {
+        let nuevo = await API.crear(t);
+        if($("#nap")?.checked) nuevo = await API.solicitarAprob(nuevo.id, $("#nnota").value.trim());
+        toast(`Solicitud ${nuevo.codigo} enviada`);
+        await recargar(); if(!staff()) S.tab = "mis"; pintarApp(); abrirDetalle(nuevo.id);
+      });
+    }catch(err){ fallo(err); }
+  };
+}
+
+/* ---------- Cerrar ticket (con tiempo de ejecución) ---------- */
+function abrirCierre(id){
+  const t = S.tickets.find(x => x.id===id); if(!t) return;
+  if(t.aprob_estado==="Pendiente") return toast(`Hay una solicitud de ${aprobTitulo()} pendiente`, true);
+  const previas = S.horas.filter(x => x.ticket_id===id).reduce((s,x)=>s+Number(x.horas),0);
+  modal(`
+    <div class="modal-h"><div><div class="code">${esc(t.codigo)}</div><h1>Cerrar ticket</h1><div class="muted small">${esc(t.titulo)}</div></div><button class="x">×</button></div>
+    <form class="form" id="fcierre">
+      <label class="f full">Resultado<select id="cres"><option>Completado</option><option>Rechazado</option><option>Cancelado</option></select></label>
+      <div class="full"><div class="f" style="margin-bottom:4px">Tiempo de ejecución${previas?` <span class="muted" style="font-weight:500">(adicional a ${fHoras(previas)} ya registradas)</span>`:""}</div>
+        <div class="row" style="flex-wrap:nowrap"><label class="f grow">Horas<input type="number" id="ch" min="0" step="1" value="" required></label>
+        <label class="f grow">Minutos<select id="cm">${[0,15,30,45].map(m=>`<option value="${m}">${m}</option>`).join("")}</select></label></div></div>
+      <label class="f full">Resolución (le llega al solicitante)<textarea id="ctxt" rows="4" required placeholder="Qué se resolvió, precios o condiciones aprobadas, vigencia…"></textarea></label>
+      <div class="full hint">Se notificará a ${esc(nombreDe(t.solicitante_email))} por la app${S.cfg.flow_url?" y por correo":""}.</div>
+      <div class="full row" style="justify-content:flex-end"><button type="button" class="btn" id="ccancel">Cancelar</button><button class="btn pri" type="submit" id="cbtn">Cerrar y notificar</button></div>
+    </form>`, "narrow");
+  $("#ccancel").onclick = () => abrirDetalle(id);
+  $("#ch").focus();
+  $("#fcierre").onsubmit = async e => {
+    e.preventDefault();
+    const horas = (+$("#ch").value||0) + (+$("#cm").value||0)/60;
+    if(horas <= 0 && $("#cres").value==="Completado") return toast("Registra el tiempo de ejecución", true);
+    try{ await conBoton($("#cbtn"), () => API.cerrar(id, $("#cres").value, Math.round(horas*100)/100, $("#ctxt").value.trim()));
+      toast(`${t.codigo} cerrado · ${fHoras(horas)}`); cerrarModal(); await refrescar(); }catch(err){ fallo(err); }
+  };
+}
+
+/* ---------- Detalle del ticket ---------- */
+async function abrirDetalle(id){
+  let t = S.tickets.find(x => x.id===id);
+  if(!t) return toast("Ticket no encontrado", true);
+  modal(`<div class="empty"><span class="spin"></span> Cargando…</div>`, "wide");
+  let bit = [], adj = [];
+  try{ [bit, adj] = await Promise.all([API.bitacora(id), API.adjuntos(id)]); }catch(e){ fallo(e); }
+  const st = staff() || lower(t.asignado_email)===S.me.email, cerrado = esCerrado(t), a = alertaDe(t), ap = S.cfg.aprobacion;
+  const editSol = !st && solicitantePuedeEditar(t);
+  const v = (k, d="—") => t[k]==null || t[k]==="" ? d : t[k];
+  const pos = colaGlobal().findIndex(x => x.id===id) + 1;
+
+  let campos;
+  if((st && !cerrado) || editSol){
+    const estOK = ABIERTOS_EDIT.includes(t.estado);
+    campos = `<form class="form" id="fedit">
+      ${st ? `<label class="f">Estado<select id="e_estado" ${estOK?"":"disabled"}>${(estOK?ABIERTOS_EDIT:[t.estado]).map(x=>`<option ${t.estado===x?"selected":""}>${x}</option>`).join("")}</select></label>
+      <label class="f">Prioridad<select id="e_prioridad">${PRIORIDADES.map(x=>`<option ${t.prioridad===x?"selected":""}>${x}</option>`).join("")}</select></label>
+      <label class="f">Asignado a<select id="e_asignado_email">${opcionesAtienden(t.asignado_email)}</select></label>
+      <label class="f">Fecha ETA (estimada de entrega)<input type="date" id="e_fecha_eta" value="${v("fecha_eta","")}"></label>` : ""}
+      <label class="f">Tipo<select id="e_tipo">${TIPOS.map(x=>`<option ${t.tipo===x?"selected":""}>${esc(x)}</option>`).join("")}</select></label>
+      <label class="f">Vencimiento<input type="date" id="e_fecha_vencimiento" value="${v("fecha_vencimiento","")}"></label>
+      <label class="f">Cliente / canal<input type="text" id="e_cliente" value="${esc(v("cliente",""))}"></label>
+      <label class="f">Línea de producto<input type="text" id="e_linea_producto" value="${esc(v("linea_producto",""))}"></label>
+      <label class="f">Monto de impacto<input type="number" step="0.01" id="e_monto_impacto" value="${v("monto_impacto","")}"></label>
+      <label class="f">Descuento %<input type="number" step="0.01" id="e_descuento_pct" value="${v("descuento_pct","")}"></label>
+      <label class="f full">Título<input type="text" id="e_titulo" value="${esc(t.titulo)}"></label>
+      <label class="f full">Descripción<textarea id="e_descripcion" rows="4">${esc(v("descripcion",""))}</textarea></label>
+      <div class="full row" style="justify-content:flex-end"><button class="btn" type="submit">Guardar cambios</button></div>
+    </form>`;
+  } else {
+    campos = `<dl class="kv">
+      <dt>Prioridad</dt><dd>${tagPrio(t.prioridad)}</dd><dt>Asignado a</dt><dd>${esc(t.asignado_email?nombreDe(t.asignado_email):"Equipo de Pricing")}</dd>
+      <dt>Cliente</dt><dd>${esc(v("cliente"))}</dd><dt>Línea</dt><dd>${esc(v("linea_producto"))}</dd>
+      <dt>Fecha estimada (ETA)</dt><dd>${fFecha(t.fecha_eta)}</dd><dt>Vencimiento</dt><dd>${fFecha(t.fecha_vencimiento)}</dd>
+      <dt>Impacto</dt><dd>${t.monto_impacto!=null?fNum(t.monto_impacto)+" "+esc(t.moneda||""):"—"}</dd>
+      <dt>Descuento</dt><dd>${t.descuento_pct!=null?fNum(t.descuento_pct)+" %":"—"}</dd></dl>
+      ${t.descripcion ? `<h3 style="margin-top:12px">Descripción</h3><div class="desc">${esc(t.descripcion)}</div>` : ""}`;
+  }
+
+  // Acciones del equipo de Pricing
+  let acciones = "";
+  if(st && !cerrado){
+    acciones = `<div class="actions" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
+      ${puedeCerrar(t) ? `<button class="btn pri" id="a_cerrar" ${t.aprob_estado==="Pendiente"?"disabled title='Hay una aprobación pendiente'":""}>Cerrar ticket…</button>` : ""}
+      ${ap.email && t.aprob_estado!=="Pendiente" ? `<button class="btn olive" id="a_aprob">Solicitar ${esc(ap.titulo)}</button>` : ""}</div>`;
+  } else if(st && cerrado && staff()){
+    acciones = `<div class="actions" style="margin-top:12px"><button class="btn" id="a_reabrir">Reabrir ticket</button></div>`;
+  } else if(esMio(t) && !cerrado && ap.email && t.aprob_estado==="No aplica"){
+    acciones = `<div class="actions" style="margin-top:12px"><button class="btn olive" id="a_aprob">Solicitar ${esc(ap.titulo)}</button></div>`;
+  }
+
+  // Bloque de cierre
+  const cierre = cerrado ? `<div class="box ${t.estado==="Completado"?"ok":t.estado==="Rechazado"?"no":""}"><h3>${esc(t.estado)}</h3>
+    <div class="small">Por <b>${esc(nombreDe(t.cerrado_por))}</b> el ${fFechaHora(t.cerrado_at)} · ${diasEntre(t.created_at, t.cerrado_at)} días${t.horas_ejecucion!=null?` · tiempo de ejecución <b>${fHoras(t.horas_ejecucion)}</b>`:""}</div>
+    ${t.resolucion?`<div class="desc" style="margin-top:8px">${esc(t.resolucion)}</div>`:""}</div>` : "";
+
+  // Posición en la cola (para el solicitante)
+  const colaBox = !cerrado && !st && pos ? (() => { const c = S.cola.find(x => x.ticket_id===id); return c ? `<div class="box ok"><h3>Tu lugar en la cola: #${c.posicion} de ${c.total}</h3>
+    <div class="small">${c.adelante===0?"Es la siguiente en atención.":`Hay ${c.adelante} solicitud${c.adelante>1?"es":""} antes de la tuya.`}</div>${pista(c)}${pasos(t)}</div>` : ""; })() : "";
+
+  // Aprobación
+  let aprob = "";
+  if(esAprobadorDe(t)){
+    aprob = `<div class="box ap"><h3>Tu decisión · ${esc(ap.titulo)}</h3><p class="small" style="margin-top:0">Enviado ${fFechaHora(t.aprob_enviado_at)}</p>
+      <label class="f">Comentario (obligatorio si rechazas)<textarea id="ap_com" rows="3"></textarea></label>
+      <div class="actions" style="margin-top:10px"><button class="btn pri" id="ap_ok">Aprobar</button><button class="btn danger" id="ap_no">Rechazar</button></div></div>`;
+  } else if(t.aprob_estado==="Pendiente"){
+    aprob = `<div class="box ap"><h3>${esc(ap.titulo)} pendiente</h3><div class="small">Con <b>${esc(nombreDe(t.aprob_email))}</b> desde ${fFechaHora(t.aprob_enviado_at)}</div></div>`;
+  } else if(["Aprobado","Rechazado"].includes(t.aprob_estado)){
+    aprob = `<div class="box ${t.aprob_estado==="Aprobado"?"ok":"no"}"><h3>${esc(ap.titulo)}: ${esc(t.aprob_estado.toLowerCase())}</h3>
+      <div class="small">Por <b>${esc(nombreDe(t.aprob_resuelto_por))}</b> el ${fFechaHora(t.aprob_resuelto_at)}</div>
+      ${t.aprob_comentario?`<div class="desc" style="margin-top:8px">${esc(t.aprob_comentario)}</div>`:""}</div>`;
+  }
+
+  modal(`
+    <div class="modal-h">
+      <div><div class="row" style="gap:8px"><span class="code" style="font-size:16px">${esc(t.codigo)}</span>${tagEstado(t.estado)}${tagAprob(t)}${tagAlerta(a)}${!cerrado&&st&&pos?`<span class="tag t-slate">#${pos} en cola</span>`:""}</div>
+        <h1 style="margin-top:6px">${esc(t.titulo)}</h1>
+        <div class="muted small">${esc(tipoTxt(t))} · Solicitado por ${esc(nombreDe(t.solicitante_email))} el ${fFecha(t.created_at)}</div></div>
+      <button class="x">×</button>
+    </div>
+    ${t.estado==="En espera de información" && esMio(t) ? `<div class="banner">Pricing necesita información para continuar. Responde en los comentarios.</div>` : ""}
+    <div class="det">
+      <div class="grid" style="gap:14px;align-content:start">
+        ${cierre}${colaBox}
+        <div class="card flat">${campos}${acciones}</div>
+        <div class="card flat"><h3>Archivos</h3>
+          <div>${adj.length ? adj.map(x=>`<div class="row small" style="padding:4px 0"><a href="#" data-ruta="${esc(x.ruta)}">📎 ${esc(x.nombre)}</a><span class="muted">${esc(nombreDe(x.subido_por))} · ${fFecha(x.created_at)}</span></div>`).join("") : `<div class="muted small">Sin archivos.</div>`}</div>
+          <label class="btn sm" style="margin-top:8px">Adjuntar archivo<input type="file" id="adj_in" class="hidden" multiple></label></div>
+      </div>
+      <div class="grid" style="gap:14px;align-content:start">
+        ${aprob}
+        <div class="card flat"><h3>Comentarios y bitácora</h3>
+          <textarea id="com" rows="2" placeholder="Escribe un comentario…"></textarea>
+          <div class="row" style="justify-content:flex-end;margin:8px 0 6px"><button class="btn sm pri" id="com_btn">Comentar</button></div>
+          <div class="tl">${bit.slice().reverse().map(evento).join("") || `<div class="muted small">Sin movimientos.</div>`}</div></div>
+      </div>
+    </div>`, "wide");
+
+  const recargarDetalle = async () => { await recargar(); pintarApp(true); abrirDetalle(id); };
+
+  $("#fedit") && ($("#fedit").onsubmit = async e => {
+    e.preventDefault(); const c = {};
+    for(const k of ["estado","prioridad","asignado_email","fecha_eta","tipo","fecha_vencimiento","cliente","linea_producto","monto_impacto","descuento_pct","titulo","descripcion"]){
+      const el = $("#e_"+k); if(!el || el.disabled) continue;
+      let val = el.value.trim(); if(el.type==="number") val = val==="" ? null : Number(val); else if(val==="") val = null;
+      const cur = t[k]==null || t[k]==="" ? null : (el.type==="number" ? Number(t[k]) : String(t[k]));
+      if(val!==cur) c[k] = val;
+    }
+    if(!Object.keys(c).length) return toast("No hay cambios");
+    if("titulo" in c && !c.titulo) return toast("El título no puede quedar vacío", true);
+    try{ await API.actualizar(id, c); toast("Cambios guardados"); await recargarDetalle(); }catch(err){ fallo(err); }
+  });
+  $("#a_cerrar") && ($("#a_cerrar").onclick = () => abrirCierre(id));
+  $("#a_reabrir") && ($("#a_reabrir").onclick = async () => { const m = prompt("Motivo para reabrir el ticket:"); if(!m) return;
+    try{ await API.reabrir(id, m); toast("Ticket reabierto"); await recargarDetalle(); }catch(e){ fallo(e); } });
+  $("#a_aprob") && ($("#a_aprob").onclick = async ev => { const nota = prompt(`Nota para ${ap.nombre || "el aprobador"} (opcional):`, ""); if(nota===null) return;
+    try{ await conBoton(ev.currentTarget, () => API.solicitarAprob(id, nota)); toast(`Enviado a ${ap.titulo}`); await recargarDetalle(); }catch(e){ fallo(e); } });
+  const decidir = async dec => { const com = $("#ap_com").value.trim();
+    if(dec==="Rechazado" && !com) return toast("Escribe el motivo del rechazo", true);
+    if(!confirm(`¿Confirmas que ${dec==="Aprobado"?"apruebas":"rechazas"} ${t.codigo}?`)) return;
+    try{ await API.resolverAprob(id, dec, com); toast(`Solicitud ${dec==="Aprobado"?"aprobada":"rechazada"}`); await recargarDetalle(); }catch(e){ fallo(e); } };
+  $("#ap_ok") && ($("#ap_ok").onclick = () => decidir("Aprobado"));
+  $("#ap_no") && ($("#ap_no").onclick = () => decidir("Rechazado"));
+  $("#com_btn").onclick = async ev => { const txt = $("#com").value.trim(); if(!txt) return;
+    try{ await conBoton(ev.currentTarget, () => API.nota(id, "Comentario", txt)); await recargarDetalle(); }catch(e){ fallo(e); } };
+  $("#adj_in").onchange = async e => { try{ for(const f of e.target.files) await API.subir(id, f); toast("Archivo adjuntado"); await recargarDetalle(); }catch(err){ fallo(err); } };
+  $$("[data-ruta]").forEach(el => el.onclick = async ev => { ev.preventDefault(); try{ window.open(await API.urlAdjunto(el.dataset.ruta), "_blank"); }catch(e){ fallo(e); } });
+  // Marca como leídas las notificaciones de este ticket
+  const ids = S.notifs.filter(n => n.ticket_id===id && !n.leida).map(n => n.id);
+  if(ids.length){ API.marcarLeidas(ids).then(() => { S.notifs.forEach(n => { if(ids.includes(n.id)) n.leida = true; }); const b = $("#bell .bell-n"); if(b){ const k = noLeidas(); k ? b.textContent = k : b.remove(); } }).catch(()=>{}); }
+}
+
+function valorLegible(campo, v){
+  if(v==null || v==="") return "vacío";
+  if(campo==="requiere_aprobacion") return v==="true"||v===true ? "Sí" : "No";
+  if(campo==="horas_ejecucion") return fHoras(v);
+  if(/^fecha_/.test(campo)) return fFecha(v);
+  if(/_email$/.test(campo)) return nombreDe(v);
+  return v;
+}
+function evento(b){
+  const quien = `<div class="who">${esc(nombreDe(b.usuario_email))} · ${fFechaHora(b.created_at)}</div>`;
+  let cls = "", txt;
+  switch(b.accion){
+    case "Creación": cls="c"; txt = "Creó la solicitud"; break;
+    case "Cambio": txt = `Cambió <b>${esc(CAMPOS[b.campo]||b.campo)}</b>: ${esc(valorLegible(b.campo,b.valor_anterior))} → <b>${esc(valorLegible(b.campo,b.valor_nuevo))}</b>`; break;
+    case "Comentario": cls="c"; txt = "Comentó"; break;
+    case "Solicitud de aprobación": cls="a"; txt = `Solicitó ${esc(aprobTitulo())} a <b>${esc(nombreDe(b.valor_nuevo))}</b>`; break;
+    case "Decisión de aprobación": cls = b.valor_nuevo==="Aprobado" ? "c" : "r"; txt = `<b>${esc(b.valor_nuevo)}</b> · ${esc(aprobTitulo())}`; break;
+    case "Cierre": cls="c"; txt = `Cerró el ticket: <b>${esc(b.valor_nuevo)}</b>`; break;
+    case "Reapertura": cls="a"; txt = "Reabrió el ticket"; break;
+    case "Adjunto": txt = `Adjuntó <b>${esc(b.valor_nuevo)}</b>`; break;
+    default: txt = esc(b.accion);
+  }
+  return `<div class="ev ${cls}"><span class="dt"></span><div>${quien}<div class="txt">${txt}</div>${b.comentario?`<div class="cm">${esc(b.comentario)}</div>`:""}</div></div>`;
+}
+
+iniciar();
+</script>
+</body>
+</html>
