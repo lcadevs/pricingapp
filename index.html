@@ -1471,6 +1471,7 @@ async function vUsuarios(){
         <label class="f">Correo (@${esc(doms.join(", @"))})<input type="email" id="ue" required></label>
         <label class="f">Rol<select id="ur">${optRol("solicitante")}</select></label>
         <div class="row" style="align-self:end"><button class="btn pri" type="submit" id="ubtn">Crear</button></div>
+        <label class="small" style="grid-column:1/-1;display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="uaviso" checked style="width:auto"> Enviarle un correo avisando que ya tiene acceso, con el enlace de la app</label>
       </form>
     </div>
     <div class="tbl-wrap"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
@@ -1485,8 +1486,14 @@ async function vUsuarios(){
   $("#fu").onsubmit = async e => { e.preventDefault();
     const nombre = $("#un").value.trim(), email = lower($("#ue").value), rolSel = $("#ur").value;
     if(!dominioOk(email)) return toast(`Solo correos @${doms.join(" o @")}`, true);
+    const avisar = $("#uaviso").checked;
     try{ await conBoton($("#ubtn"), () => API.adminUsuario({accion:"crear", nombre, email, rol:rolSel}));
-      toast(rolSel==="solicitante" ? `${nombre} ya puede entrar con su correo` : `${nombre} ya puede entrar · recibirá un código en su correo`); await recargar(); vUsuarios(); }catch(err){ fallo(err); } };
+      let aviso = "";
+      if(avisar){
+        try{ await API.bienvenida(email); aviso = S.cfg.flow_url ? " · se le envió el correo de acceso" : " · aviso guardado (falta configurar el flujo de correo)"; }
+        catch(e2){ aviso = " · no se pudo enviar el correo de acceso"; }
+      }
+      toast(`${nombre} ya puede entrar` + aviso); await recargar(); vUsuarios(); }catch(err){ fallo(err); } };
   $$("tr[data-id]").forEach(tr => {
     const id = tr.dataset.id, u = S.usuarios.find(x => x.id===id);
     $(".usave",tr).onclick = async ev => { try{ await conBoton(ev.currentTarget, () => API.guardarUsuario(id, {nombre:$(".unom",tr).value.trim(), rol:$(".urol",tr).value})); toast("Usuario actualizado"); await recargar(); vUsuarios(); }catch(e){ fallo(e); } };
