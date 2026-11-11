@@ -97,6 +97,9 @@ h1{font-size:20px;margin:0 0 4px} h2{font-size:15.5px;margin:0 0 10px} h3{font-s
 .card.flat{box-shadow:none}
 .grid{display:grid;gap:14px}
 .kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.eta-in{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-3);margin-left:4px}
+.eta-in input[type=date]{padding:3px 8px;font-size:12px;height:28px;min-height:0;width:auto;border-radius:6px}
+.eta-in.falta{color:var(--brick);font-weight:700}.eta-in.falta input{border-color:var(--brick)}
 .kpi{border-radius:var(--r);padding:13px 15px;color:var(--ink);background:var(--surface);box-shadow:var(--shadow);border:1px solid var(--line);border-left:4px solid var(--c, var(--slate-200));text-align:left}
 button.kpi{cursor:pointer} button.kpi:hover{border-color:var(--slate-200);border-left-color:var(--c, var(--slate-200));background:var(--surface-2)}
 .kpi .v{font-size:26px;font-weight:800;line-height:1.1;color:var(--kv, var(--ink))}
@@ -284,7 +287,7 @@ const MONEDAS = ["USD","CRC","MXN","EUR"];
 const ROLES = {solicitante:"Solicitante", encargado:"Encargado Pricing", manager:"Manager Pricing", aprobador:"Aprobador", admin:"Administrador"};
 const CAMPOS = {tipo:"Tipo", tipo_otro:"Detalle tipo", titulo:"Título", descripcion:"Descripción", cliente:"Cliente",
   linea_producto:"Línea de producto", prioridad:"Prioridad", estado:"Estado", asignado_email:"Asignado a",
-  fecha_eta:"ETA", fecha_vencimiento:"Vencimiento", monto_impacto:"Monto de impacto", moneda:"Moneda",
+  fecha_eta:"Fecha estimada (ETA)", fecha_vencimiento:"Vencimiento (anterior)", monto_impacto:"Monto de impacto", moneda:"Moneda",
   descuento_pct:"Descuento %", manager_email:"Manager revisor", manager_estado:"Revisión del manager", requiere_aprobacion:"Requiere aprobación", aprob_email:"Aprobador",
   aprob_estado:"Estado de aprobación", horas_ejecucion:"Horas de ejecución"};
 const EVENTOS = {
@@ -292,7 +295,7 @@ const EVENTOS = {
   manager:"Al solicitante: decisión del manager", aprobacion:"Al aprobador (CEO): solicitud de aprobación",
   decision:"Al solicitante y al manager: decisión del CEO", nuevo:"Al encargado: solicitud asignada a su cola",
   info:"Al solicitante: Pricing necesita información", comentario:"Comentario nuevo (a la otra parte)",
-  cierre:"Al solicitante: ticket cerrado", cancelado:"A quien la tenía: el solicitante la canceló", cierre_manager:"Al manager: ticket cerrado", acceso:"Al administrador: alguien solicita acceso",
+  eta:"Al solicitante: Pricing define o cambia la fecha estimada", cierre:"Al solicitante: ticket cerrado", cancelado:"A quien la tenía: el solicitante la canceló", cierre_manager:"Al manager: ticket cerrado", acceso:"Al administrador: alguien solicita acceso",
   bienvenida:"Al usuario nuevo: ya tiene acceso", codigo:"Código de ingreso (no se guarda copia)", prueba:"Correo de prueba"
 };
 const VARIABLES = ["codigo","titulo","tipo","cliente","prioridad","estado","descripcion","solicitante","encargado","vencimiento","eta",
@@ -305,18 +308,19 @@ const CFG_DEFAULT = {
   asignacion:{default_email:"", por_tipo:{}},   // encargado que atiende
   flow_url:"",
   dominios:["legrand.com","legrand-ext.com"],
-  app:{app_url:"", dias_alerta:3, dias_aprob_demora:2, dias_venc_default:7},
+  app:{app_url:"", dias_alerta:3, dias_aprob_demora:2},
   plantillas:{
     recibido:{asunto:"Recibimos tu solicitud {codigo}", cuerpo:"Hola {solicitante},\n\nRecibimos tu solicitud de Pricing:\n\n{codigo} · {titulo}\nTipo: {tipo}\n\nPuedes ver su avance y tu posición en la cola aquí:\n{link}"},
-    nuevo:{asunto:"Nueva solicitud {codigo} · {titulo}", cuerpo:"Hola {encargado},\n\nSe te asignó una nueva solicitud de Pricing.\n\n{codigo} · {titulo}\nTipo: {tipo}\nPrioridad: {prioridad}\nLa necesita para: {vencimiento}\nSolicitado por: {solicitante}\n{detalle}\n\n{descripcion}\n\n{link}"},
-    aprobacion:{asunto:"{aprobacion} requerida · {codigo} · {titulo}", cuerpo:"Hola {aprobador},\n\nSe requiere tu aprobación para la siguiente solicitud de Pricing:\n\n{codigo} · {titulo}\nTipo: {tipo}\nLa necesita para: {vencimiento}\nSolicitado por: {solicitante}\n{detalle}\n\n{descripcion}\n\nNota del manager: {nota}\n\nRevisa y aprueba o rechaza aquí:\n{link}"},
-    revision:{asunto:"Solicitud por revisar · {codigo} · {titulo}", cuerpo:"Hola {manager},\n\n{solicitante} envió una solicitud de Pricing que requiere tu revisión:\n\n{codigo} · {titulo}\nTipo: {tipo}\nLa necesita para: {vencimiento}\n{detalle}\n\n{descripcion}\n\nApruébala o recházala aquí:\n{link}"},
+    nuevo:{asunto:"Nueva solicitud {codigo} · {titulo}", cuerpo:"Hola {encargado},\n\nSe te asignó una nueva solicitud de Pricing.\n\n{codigo} · {titulo}\nTipo: {tipo}\nPrioridad: {prioridad}\nSolicitado por: {solicitante}\n{detalle}\n\n{descripcion}\n\n{link}"},
+    aprobacion:{asunto:"{aprobacion} requerida · {codigo} · {titulo}", cuerpo:"Hola {aprobador},\n\nSe requiere tu aprobación para la siguiente solicitud de Pricing:\n\n{codigo} · {titulo}\nTipo: {tipo}\nSolicitado por: {solicitante}\n{detalle}\n\n{descripcion}\n\nNota del manager: {nota}\n\nRevisa y aprueba o rechaza aquí:\n{link}"},
+    revision:{asunto:"Solicitud por revisar · {codigo} · {titulo}", cuerpo:"Hola {manager},\n\n{solicitante} envió una solicitud de Pricing que requiere tu revisión:\n\n{codigo} · {titulo}\nTipo: {tipo}\n{detalle}\n\n{descripcion}\n\nApruébala o recházala aquí:\n{link}"},
     manager:{asunto:"{manager} {decision} tu solicitud {codigo}", cuerpo:"Hola {solicitante},\n\n{manager} {decision} tu solicitud {codigo} · {titulo}.\n\nComentario: {comentario}\n\n{siguiente}\n\n{link}"},
     decision:{asunto:"{aprobacion}: {decision} · {codigo}", cuerpo:"Hola,\n\nLa solicitud {codigo} · {titulo} de {solicitante} fue {decision} por {aprobador}.\n\nComentario: {comentario}\n\n{siguiente}\n\n{link}"},
     cancelado:{asunto:"Solicitud cancelada · {codigo}", cuerpo:"Hola,\n\n{solicitante} canceló su solicitud {codigo} · {titulo}.\n\nMotivo: {comentario}\n\nYa no requiere ninguna acción de tu parte.\n\n{link}"},
     cierre_manager:{asunto:"Solicitud cerrada · {codigo}: {resultado}", cuerpo:"Hola {manager},\n\nLa solicitud {codigo} · {titulo} de {solicitante} fue cerrada como {resultado} por {encargado}.\n\nTiempo de ejecución: {horas} h\n\nResolución:\n{resolucion}\n\n{link}"},
     info:{asunto:"Pricing necesita información · {codigo}", cuerpo:"Hola {solicitante},\n\nPara continuar con tu solicitud {codigo} · {titulo}, el equipo de Pricing necesita información adicional. Revisa los comentarios y responde en el ticket:\n{link}"},
     comentario:{asunto:"Nuevo comentario en {codigo}", cuerpo:"{autor} comentó en {codigo} · {titulo}:\n\n{comentario}\n\n{link}"},
+    eta:{asunto:"Fecha estimada para tu solicitud {codigo}", cuerpo:"Hola {solicitante},\n\nEl equipo de Pricing estima que tu solicitud {codigo} · {titulo} estará lista el {eta}.\n\nAtendida por: {encargado}\n\nPuedes ver su avance aquí:\n{link}"},
     cierre:{asunto:"Tu solicitud {codigo} fue cerrada: {resultado}", cuerpo:"Hola {solicitante},\n\nTu solicitud {codigo} · {titulo} fue cerrada como {resultado}.\n\nResolución:\n{resolucion}\n\nAtendida por: {encargado}\n\n{link}"},
     acceso:{asunto:"Solicitud de acceso a Pricing Desk: {persona}", cuerpo:"{persona} ({correo}) solicita acceso a Pricing Desk.\n\nMotivo: {comentario}\n\nApruébalo o descártalo en la pestaña Usuarios:\n{link}"},
     bienvenida:{asunto:"Ya tienes acceso a Pricing Desk", cuerpo:"Hola {persona},\n\nYa puedes entrar a Pricing Desk con tu correo {correo}. Si tu rol lo requiere, te enviaremos un código de 6 dígitos a este correo para ingresar.\n\n{link}"},
@@ -388,13 +392,18 @@ const noLeidas = () => S.notifs.filter(n => !n.leida).length;
 function alertaDe(t){
   if(esCerrado(t)) return null;
   const h = hoy(), a = S.cfg.app;
-  if(t.fecha_vencimiento && t.fecha_vencimiento < h) return "Vencido";
-  if(t.fecha_vencimiento && t.fecha_vencimiento <= sumarDias(h, +a.dias_alerta||3)) return "Por vencer";
-  if(t.fecha_eta && t.fecha_eta < h) return "ETA superada";
+  if(enCola(t)){
+    if(!t.fecha_eta) return "Sin estimado";
+    if(t.fecha_eta < h) return "Atrasada";
+    if(t.fecha_eta <= sumarDias(h, +a.dias_alerta||3)) return "Por vencer";
+  }
   if(t.aprob_estado==="Pendiente" && t.aprob_enviado_at && (Date.now()-new Date(t.aprob_enviado_at)) > (+a.dias_aprob_demora||2)*864e5) return "Aprobación demorada";
   return null;
 }
-const tagAlerta = a => !a ? "" : `<span class="tag ${a==="Vencido"?"t-brick":"t-olive"}">${esc(a)}</span>`;
+const tagAlerta = a => !a ? "" : `<span class="tag ${a==="Atrasada"?"t-brick":a==="Sin estimado"?"t-gray":"t-olive"}">${esc(a)}</span>`;
+// Días de atraso contra la fecha estimada (ETA): abiertos → hasta hoy; cerrados → hasta el cierre
+const diasAtraso = t => { if(!t.fecha_eta) return 0; const fin = esCerrado(t) ? dia(t.cerrado_at) : hoy(); return Math.max(0, diasEntre(t.fecha_eta, fin)); };
+const puedeEta = t => enCola(t) && (staff() || lower(t.asignado_email)===S.me.email);
 function tagEstado(e){
   const c = {"Revisión manager":"t-olive","En cola":"t-slate","En análisis":"t-slate","En espera de información":"t-olive","Pendiente aprobación":"t-olive",
     "Completado":"t-green","Rechazado":"t-brick","Cancelado":"t-gray"}[e] || "t-gray";
@@ -546,7 +555,7 @@ const Demo = {
       const ap = tipo===TIPOS[6] || rnd()<.15;
       T.push({id, tipo, tipo_otro:tipo==="Otros"?"Consulta especial":null, titulo:pick(titulos), descripcion:"", cliente:pick(clientes), linea_producto:"",
         prioridad:pick(["Baja","Media","Media","Alta","Urgente"]), estado:res, orden:null, solicitante_id:sol, solicitante_email:su.email,
-        asignado_email:"encargado.pricing@legrand.com", fecha_eta:sumarDias(creado, dur-1), fecha_vencimiento:sumarDias(creado, Math.round(4+rnd()*8)),
+        asignado_email:"encargado.pricing@legrand.com", fecha_eta:sumarDias(creado, dur + Math.round(rnd()*3) - 1), fecha_vencimiento:sumarDias(creado, Math.round(4+rnd()*8)),
         monto_impacto:rnd()<.6 ? Math.round(rnd()*40000) : null, moneda:"USD", descuento_pct:ap ? Math.round(rnd()*12) : null,
         requiere_aprobacion:ap, aprob_email:ap?"ceo@legrand.com":null, aprob_estado:ap?"Aprobado":"No aplica", aprob_comentario:null,
         aprob_enviado_at:ap?creado+"T15:00:00Z":null, aprob_resuelto_at:ap?sumarDias(creado,1)+"T16:00:00Z":null, aprob_resuelto_por:ap?"ceo@legrand.com":null,
@@ -711,7 +720,8 @@ const API_DEMO = {
     Demo.save(); return clon(t);
   },
   async actualizar(id, c){
-    const t = Demo.t(id), antes = t.estado, asig = t.asignado_email; Demo.cambio(t, c);
+    const t = Demo.t(id), antes = t.estado, asig = t.asignado_email, eta = t.fecha_eta; Demo.cambio(t, c);
+    if(t.fecha_eta && t.fecha_eta!==eta && !t.cerrado_at) Demo.notificar(t, "eta", t.solicitante_email);
     if(t.estado==="En espera de información" && antes!==t.estado) Demo.notificar(t, "info", t.solicitante_email);
     if(t.asignado_email!==asig) Demo.notificar(t, "nuevo", t.asignado_email);
     Demo.save(); return clon(t);
@@ -1093,7 +1103,7 @@ function vMis(){
       <div class="hdr" data-open="${t.id}"><div class="grow">
         <div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span>${tagEstado(t.estado)}${tagAprob(t)}</div>
         <div class="b" style="margin-top:4px">${esc(t.titulo)}</div>
-        <div class="sub">${esc(tipoTxt(t))} · enviada ${hace(t.created_at)}${t.fecha_eta?` · fecha estimada <b>${fFecha(t.fecha_eta)}</b>`:""}</div></div>
+        <div class="sub">${esc(tipoTxt(t))} · enviada ${hace(t.created_at)}${t.fecha_eta?` · fecha estimada <b>${fFecha(t.fecha_eta)}</b>`:(enCola(t)?" · Pricing aún no define la fecha estimada":"")}</div></div>
         <div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn sm ghost" data-cancel="${t.id}" style="color:var(--brick)">Cancelar</button><span class="btn sm">Ver detalle</span></div></div>
       <div class="body">${pos}<div>${msg}${pasos(t)}</div></div></div>`;
   };
@@ -1126,8 +1136,9 @@ function vInicio(){
     ["Pendientes", base.length, "k-green", {vista:"abiertos"}],
     ["Ingresados hoy", T.filter(t => dia(t.created_at)===h).length, "k-slate", {vista:"todos", desde:h, hasta:h}],
     ["Prioridad alta o urgente", base.filter(t => ["Alta","Urgente"].includes(t.prioridad)).length, "k-olive", {vista:"abiertos", prioridad:"altas"}],
-    ["Vencidos", base.filter(t => alertaDe(t)==="Vencido").length, "k-brick", {vista:"abiertos", alerta:"Vencido"}],
-    ["Por vencer", base.filter(t => alertaDe(t)==="Por vencer").length, "k-olive", {vista:"abiertos", alerta:"Por vencer"}],
+    ["Atrasadas (según ETA)", base.filter(t => alertaDe(t)==="Atrasada").length, "k-brick", {vista:"abiertos", alerta:"Atrasada"}],
+    ["Por vencer (ETA)", base.filter(t => alertaDe(t)==="Por vencer").length, "k-olive", {vista:"abiertos", alerta:"Por vencer"}],
+    ["Sin fecha estimada", base.filter(t => alertaDe(t)==="Sin estimado").length, "k-slate", {vista:"abiertos", alerta:"Sin estimado"}],
     ["En revisión del manager", T.filter(t => t.estado==="Revisión manager").length, "k-slate", {vista:"Revisión manager", asignado:""}],
     [`En ${aprobTitulo()}`, T.filter(t => t.estado==="Pendiente aprobación").length, "k-slate", {vista:"Pendiente aprobación", asignado:""}],
     ["Esperando información", base.filter(t => t.estado==="En espera de información").length, "k-slate", {vista:"En espera de información"}],
@@ -1147,14 +1158,20 @@ function vInicio(){
         <div class="hd" title="Arrastrar">⠿</div><div class="pos">${pos.get(t.id)}</div>
         <div class="main" data-open="${t.id}"><div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span><span class="tt ell grow">${esc(t.titulo)}</span></div>
           <div class="meta">${tagPrio(t.prioridad)}${tagEstado(t.estado)}${tagAprob(t)}${tagAlerta(alertaDe(t))}
-            <span class="sub">${esc(nombreDe(t.solicitante_email))} · ${hace(t.created_at)} · vence ${fFecha(t.fecha_vencimiento)}</span></div></div>
+            <span class="sub">${esc(nombreDe(t.solicitante_email))} · ${hace(t.created_at)}</span>
+            ${puedeEta(t) ? `<label class="eta-in ${t.fecha_eta?"":"falta"}" data-stop>Estimado <input type="date" data-eta="${t.id}" value="${t.fecha_eta||""}" min="${dia(t.created_at)}"></label>`
+              : `<span class="sub">· estimado ${fFecha(t.fecha_eta)}</span>`}</div></div>
         <div class="side">${puedeCerrar(t)?`<button class="btn sm" data-close="${t.id}">Cerrar</button>`:""}<div class="mv"><button data-up="${t.id}" title="Subir">▲</button><button data-down="${t.id}" title="Bajar">▼</button></div></div>
       </div>`).join("")}</div>` : `<div class="card empty">No hay tickets abiertos en la cola. 🎉</div>`}`;
   $("#recargar").onclick = refrescar;
   $("#solomios").onchange = e => { S.soloMios = e.target.checked; vInicio(); };
   $$("[data-k]").forEach(b => b.onclick = () => { const f = k[+b.dataset.k][3]; if(!f) return;
     S.f = {vista:"abiertos", q:"", tipo:"", prioridad:"", asignado: rol()==="encargado" && misAb.length ? "yo" : "", solicitante:"", desde:"", hasta:"", alerta:"", ...f}; S.tab = "tickets"; pintarApp(); });
-  $$("#queue [data-open]").forEach(el => el.onclick = () => abrirDetalle(+el.dataset.open));
+  $$("#queue [data-open]").forEach(el => el.onclick = ev => { if(ev.target.closest("[data-stop]")) return; abrirDetalle(+el.dataset.open); });
+  $$("[data-eta]").forEach(inp => inp.onchange = async () => { const t = S.tickets.find(x => x.id===+inp.dataset.eta), val = inp.value || null;
+    if((t.fecha_eta||null)===val) return;
+    try{ inp.disabled = true; await API.actualizar(t.id, {fecha_eta:val}); toast(val ? `${t.codigo}: estimado ${fFecha(val)} · se avisó al solicitante` : `${t.codigo}: sin fecha estimada`); await refrescar(); }
+    catch(e){ inp.disabled = false; fallo(e); } });
   $$("[data-close]").forEach(b => b.onclick = e => { e.stopPropagation(); abrirCierre(+b.dataset.close); });
   const mover = async (id, d) => { const ids = $$("#queue .qi").map(x => +x.dataset.id); const i = ids.indexOf(id), j = i+d;
     if(j<0 || j>=ids.length) return; [ids[i], ids[j]] = [ids[j], ids[i]]; await guardarOrden(ids); };
@@ -1203,14 +1220,14 @@ function tablaTickets(lista, cerrada=false){
   if(!lista.length) return `<div class="tbl-wrap"><div class="empty">No hay tickets con esos filtros.</div></div>`;
   return `<div class="tbl-wrap"><table><thead><tr>
     <th>Ticket</th><th>Solicitud</th><th>Solicitante</th><th>Prioridad</th><th>Estado</th><th>Asignado</th>
-    ${cerrada ? `<th>Cerrado</th><th class="r">Días</th><th class="r">Horas</th>` : `<th>ETA</th><th>Vence</th><th></th>`}
+    ${cerrada ? `<th>Cerrado</th><th class="r">Días</th><th class="r">Horas</th>` : `<th>Fecha estimada</th><th class="r">Atraso</th><th></th>`}
     </tr></thead><tbody>${lista.map(t => `<tr class="click" data-open="${t.id}">
       <td class="code">${esc(t.codigo)}</td>
       <td><div class="b">${esc(t.titulo)}</div><div class="sub">${esc(tipoTxt(t))}</div></td>
       <td class="small">${esc(nombreDe(t.solicitante_email))}</td><td>${tagPrio(t.prioridad)}</td><td>${tagEstado(t.estado)} ${tagAprob(t)}</td>
       <td class="small">${esc(t.asignado_email ? nombreDe(t.asignado_email) : "Sin asignar")}</td>
       ${cerrada ? `<td class="small num">${fFecha(t.cerrado_at)}</td><td class="r num">${t.cerrado_at?diasEntre(t.created_at,t.cerrado_at):"—"}</td><td class="r num">${t.horas_ejecucion!=null?fNum(t.horas_ejecucion,2):"—"}</td>`
-        : `<td class="small num">${fFecha(t.fecha_eta)}</td><td class="small num">${fFecha(t.fecha_vencimiento)}</td><td>${tagAlerta(alertaDe(t))}</td>`}
+        : `<td class="small num">${fFecha(t.fecha_eta)}</td><td class="r num" style="${diasAtraso(t)&&!esCerrado(t)?"color:var(--brick);font-weight:700":""}">${!esCerrado(t)&&diasAtraso(t)?diasAtraso(t)+" d":"—"}</td><td>${tagAlerta(alertaDe(t))}</td>`}
       </tr>`).join("")}</tbody></table></div>`;
 }
 function vTickets(){
@@ -1232,11 +1249,11 @@ function vTickets(){
       <select id="fsol"><option value="">Cualquier solicitante</option>${sols.map(e=>`<option value="${esc(e)}" ${f.solicitante===e?"selected":""}>${esc(nombreDe(e))}</option>`).join("")}</select>
       <label class="f" style="font-weight:500">${f.vista==="cerrados"?"Cerrado":"Ingresado"} desde<input type="date" id="fdesde" value="${f.desde}"></label>
       <label class="f" style="font-weight:500">hasta<input type="date" id="fhasta" value="${f.hasta}"></label>
-      <select id="falerta"><option value="">Con o sin alerta</option><option value="cualquiera" ${f.alerta==="cualquiera"?"selected":""}>Con alguna alerta</option>${["Vencido","Por vencer","ETA superada","Aprobación demorada"].map(x=>`<option ${f.alerta===x?"selected":""}>${x}</option>`).join("")}</select>
+      <select id="falerta"><option value="">Con o sin alerta</option><option value="cualquiera" ${f.alerta==="cualquiera"?"selected":""}>Con alguna alerta</option>${["Atrasada","Por vencer","Sin estimado","Aprobación demorada"].map(x=>`<option ${f.alerta===x?"selected":""}>${x}</option>`).join("")}</select>
     </div>
     <div class="row" style="margin-bottom:8px"><span class="small muted grow" id="cuenta"></span><button class="btn ghost sm" id="limpiar">Limpiar filtros</button></div>
     <div id="lista"></div>`;
-  const pintar = () => { const l = filtrar(); $("#cuenta").textContent = `${l.length} ticket${l.length===1?"":"s"}`;
+  const pintar = () => { const l = filtrar(); if(S.f.alerta==="Atrasada") l.sort((a,b) => diasAtraso(b)-diasAtraso(a)); $("#cuenta").textContent = `${l.length} ticket${l.length===1?"":"s"}`;
     $("#lista").innerHTML = tablaTickets(l, S.f.vista==="cerrados" || CERRADOS.includes(S.f.vista));
     $$("#lista [data-open]").forEach(el => el.onclick = () => abrirDetalle(+el.dataset.open)); };
   const leer = () => { S.f = {vista:$("#fest").value, q:$("#fq").value, tipo:$("#ftipo").value, prioridad:$("#fprio").value, asignado:$("#fasig").value,
@@ -1249,10 +1266,10 @@ function vTickets(){
   pintar();
 }
 function filaReporte(t){
-  const cerr = !!t.cerrado_at, h = hoy(); let sla = "Sin fecha";
-  if(t.fecha_vencimiento){
-    if(!cerr) sla = t.fecha_vencimiento < h ? "Vencido" : t.fecha_vencimiento <= sumarDias(h, +S.cfg.app.dias_alerta||3) ? "Por vencer" : "En plazo";
-    else sla = dia(t.cerrado_at) > t.fecha_vencimiento ? "Cerrado fuera de plazo" : "Cerrado en plazo";
+  const cerr = !!t.cerrado_at, h = hoy(); let sla = "Sin ETA";
+  if(t.fecha_eta){
+    if(!cerr) sla = t.fecha_eta < h ? "Atrasado" : t.fecha_eta <= sumarDias(h, +S.cfg.app.dias_alerta||3) ? "Por vencer" : "En plazo";
+    else sla = dia(t.cerrado_at) > t.fecha_eta ? "Cerrado fuera de plazo" : "Cerrado en plazo";
   }
   return {origen:"Pricing especial", numero:t.codigo, tipo_solicitud:t.tipo, tipo_detalle:t.tipo_otro||"", titulo:t.titulo,
     prioridad:t.prioridad, estado:t.estado, estado_general:cerr?"Cerrado":"Abierto",
@@ -1260,6 +1277,7 @@ function filaReporte(t){
     fecha_solicitud:dia(t.created_at), fecha_eta:t.fecha_eta||"", fecha_vencimiento:t.fecha_vencimiento||"", fecha_cierre:cerr?dia(t.cerrado_at):"",
     dias_abierto:diasEntre(t.created_at, cerr?t.cerrado_at:h), estado_sla:sla, horas_ejecucion:t.horas_ejecucion??"",
     requiere_aprobacion:t.requiere_aprobacion?"Sí":"No", aprob_estado:t.aprob_estado, aprob_email:t.aprob_email||"",
+    dias_atraso: diasAtraso(t),
     campos_formulario: camposDe(t.tipo).filter(c => (t.datos||{})[c.id]).map(c => `${c.etiqueta}: ${t.datos[c.id]}`).join(" | ")};
 }
 function exportarCSV(filas, nombre){
@@ -1313,11 +1331,12 @@ function vAnalitica(){
   const abiertos = T.filter(t => !esCerrado(t)), hr = S.horas.filter(x => dia(x.fecha) >= desde);
   const totH = hr.reduce((s,x)=>s+Number(x.horas),0);
   const lead = cer.length ? cer.reduce((s,t)=>s+diasEntre(t.created_at,t.cerrado_at),0)/cer.length : null;
-  const conFecha = cer.filter(t => t.fecha_vencimiento), enPlazo = conFecha.filter(t => dia(t.cerrado_at) <= t.fecha_vencimiento).length;
+  const conFecha = cer.filter(t => t.fecha_eta && t.estado==="Completado"), enPlazo = conFecha.filter(t => dia(t.cerrado_at) <= t.fecha_eta).length;
+  const atrasadasHoy = abiertos.filter(t => alertaDe(t)==="Atrasada").length;
   const pct = conFecha.length ? enPlazo/conFecha.length*100 : null;
   const completados = cer.filter(t => t.estado==="Completado").length;
   const kpis = [["Ingresados", ing.length, "k-slate"], ["Cerrados", cer.length, "k-green"], ["Abiertos hoy", abiertos.length, "k-olive"],
-    ["Días promedio de atención", lead==null?"—":fNum(lead,1), "k-slate"], ["Cerrados en plazo", pct==null?"—":fNum(pct,0)+" %", pct!=null&&pct<80?"k-brick":"k-green"],
+    ["Días promedio de atención", lead==null?"—":fNum(lead,1), "k-slate"], ["Atrasadas hoy (ETA)", atrasadasHoy, atrasadasHoy?"k-brick":"k-green"], ["Completados a tiempo (ETA)", pct==null?"—":fNum(pct,0)+" %", pct!=null&&pct<80?"k-brick":"k-green"],
     ["Horas registradas", fNum(totH,1), "k-slate"], ["Horas promedio por ticket", cer.length?fNum(totH/Math.max(cer.length,1),1):"—", "k-slate"]];
   const porMes = k => meses.map(m => k(m));
   const sIng = porMes(m => T.filter(t => mesKey(t.created_at)===m).length), sCer = porMes(m => T.filter(t => t.cerrado_at && mesKey(t.cerrado_at)===m).length);
@@ -1407,7 +1426,7 @@ function vRevision(){
         <div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span>${tagPrio(t.prioridad)}${tagAlerta(alertaDe(t))}<span class="sub grow">recibida ${hace(t.created_at)}${lower(t.manager_email)!==S.me.email?` · para ${esc(nombreDe(t.manager_email))}`:""}</span></div>
         <h2 style="margin:6px 0 2px">${esc(t.titulo)}</h2>
         <div class="sub" style="margin-bottom:10px">${esc(tipoTxt(t))} · solicitado por ${esc(nombreDe(t.solicitante_email))}</div>
-        <dl class="kv"><dt>La necesita para</dt><dd>${fFecha(t.fecha_vencimiento)}</dd>${detalleKV(t)}</dl>
+        <dl class="kv">${detalleKV(t)}</dl>
         ${t.descripcion?`<div class="desc" style="margin-top:10px">${esc(t.descripcion)}</div>`:""}
         <label class="f" style="margin-top:12px">Comentario (obligatorio si rechazas; lo verá el solicitante)<textarea data-rcom="${t.id}" rows="2"></textarea></label>
         ${ap.email ? `<label class="check" style="margin-top:10px"><input type="checkbox" data-rceo="${t.id}"> Requiere ${esc(ap.titulo)}${ap.nombre?` (${esc(ap.nombre)})`:""}</label>` : `<div class="hint" style="margin-top:8px">No hay aprobador configurado: al aprobar pasa directo al encargado.</div>`}
@@ -1439,7 +1458,7 @@ function vAprobaciones(){
         <div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span>${tagPrio(t.prioridad)}${tagAlerta(alertaDe(t))}<span class="sub grow">enviada ${hace(t.aprob_enviado_at)}${lower(t.aprob_email)!==S.me.email?` · para ${esc(nombreDe(t.aprob_email))}`:""}</span></div>
         <h2 style="margin:6px 0 2px">${esc(t.titulo)}</h2>
         <div class="sub" style="margin-bottom:10px">${esc(tipoTxt(t))} · solicitado por ${esc(nombreDe(t.solicitante_email))}</div>
-        <dl class="kv"><dt>La necesita para</dt><dd>${fFecha(t.fecha_vencimiento)}</dd>${detalleKV(t)}</dl>
+        <dl class="kv">${detalleKV(t)}</dl>
         ${t.descripcion?`<div class="desc" style="margin-top:10px">${esc(t.descripcion)}</div>`:""}
         <label class="f" style="margin-top:12px">Comentario (obligatorio si rechazas)<textarea data-com="${t.id}" rows="2"></textarea></label>
         <div class="actions" style="margin-top:10px"><button class="btn pri" data-ok="${t.id}">Aprobar</button><button class="btn danger" data-no="${t.id}">Rechazar</button><button class="btn ghost" data-open="${t.id}">Ver ticket completo</button></div>
@@ -1553,9 +1572,8 @@ async function vConfig(){
           <label class="f full">URL del flujo de Power Automate (envío de correos)
             <input type="password" id="c_flow" value="${esc(c.flow_url||"")}" placeholder="https://prod-00.westus.logic.azure.com/…" autocomplete="off"></label>
           <label class="f full">Dominios de correo permitidos (separados por coma)<input type="text" id="c_dom" value="${esc((c.dominios||[]).join(", "))}"></label>
-          <label class="f">Días para "por vencer"<input type="number" id="c_d1" min="1" value="${esc(app.dias_alerta)}"></label>
+          <label class="f">Días antes de la fecha estimada para "por vencer"<input type="number" id="c_d1" min="1" value="${esc(app.dias_alerta)}"></label>
           <label class="f">Días para "aprobación demorada"<input type="number" id="c_d2" min="1" value="${esc(app.dias_aprob_demora)}"></label>
-          <label class="f">Vencimiento sugerido (días)<input type="number" id="c_d3" min="1" value="${esc(app.dias_venc_default)}"></label>
         </div>
         <p class="hint">Sin flujo, las notificaciones igual aparecen en la campana de cada usuario.</p>
         <div class="row" style="justify-content:flex-end"><button class="btn" id="g_prueba">Enviarme correo de prueba</button><button class="btn pri" id="g_app">Guardar</button></div></div>
@@ -1593,7 +1611,7 @@ async function vConfig(){
   $("#c_ae").onchange = () => { const sel = act.find(u => lower(u.email)===$("#c_ae").value); if(sel && !$("#c_an").value.trim()) $("#c_an").value = sel.nombre||""; };
   $("#c_url_aqui").onclick = () => $("#c_url").value = location.origin + location.pathname;
   $("#g_app").onclick = async e => {
-    await guardar(e.currentTarget, "app", {app_url:$("#c_url").value.trim(), dias_alerta:+$("#c_d1").value||3, dias_aprob_demora:+$("#c_d2").value||2, dias_venc_default:+$("#c_d3").value||7});
+    await guardar(e.currentTarget, "app", {app_url:$("#c_url").value.trim(), dias_alerta:+$("#c_d1").value||3, dias_aprob_demora:+$("#c_d2").value||2});
     try{ await API.guardarConfig("flow_url", $("#c_flow").value.trim()); S.cfg.flow_url = $("#c_flow").value.trim();
       const dom = $("#c_dom").value.split(/[,;\s]+/).map(x => lower(x).replace(/^@/,"")).filter(Boolean);
       if(!dom.length) throw new Error("Debe quedar al menos un dominio permitido");
@@ -1695,9 +1713,8 @@ function abrirNuevo(){
       <label class="f full">Título<input type="text" id="ntit" required maxlength="160" placeholder="Resumen corto de la solicitud"></label>
       <label class="f full">Descripción y justificación<textarea id="ndesc" rows="4" placeholder="Contexto, alcance, condiciones comerciales, competencia…"></textarea></label>
       <label class="f">Prioridad sugerida<select id="nprio">${PRIORIDADES.map(x=>`<option ${x==="Media"?"selected":""}>${x}</option>`).join("")}</select></label>
-      <label class="f">La necesito para<input type="date" id="nven" value="${sumarDias(hoy(), +S.cfg.app.dias_venc_default||7)}"></label>
       <div class="full form" id="ncampos" style="padding:0"></div>
-      <div class="full hint">Tu solicitud pasará primero por la revisión del manager${mgr?` (${esc(nombreDe(mgr))})`:""}; te avisaremos cada avance.</div>
+      <div class="full hint">Tu solicitud pasará primero por la revisión del manager${mgr?` (${esc(nombreDe(mgr))})`:""}; te avisaremos cada avance. El equipo de Pricing te indicará la fecha estimada de entrega.</div>
       <div class="full row" style="justify-content:flex-end"><button type="button" class="btn" id="ncancel">Cancelar</button><button class="btn pri" type="submit" id="ncrear">Enviar solicitud</button></div>
     </form>`);
   $("#ncancel").onclick = cerrarModal;
@@ -1707,7 +1724,7 @@ function abrirNuevo(){
     e.preventDefault();
     const num = v => v==="" ? null : Number(v);
     const t = {tipo:$("#ntipo").value, tipo_otro:$("#ntipo").value==="Otros" ? $("#notro").value.trim()||null : null,
-      titulo:$("#ntit").value.trim(), descripcion:$("#ndesc").value.trim(), prioridad:$("#nprio").value, fecha_vencimiento:$("#nven").value||null};
+      titulo:$("#ntit").value.trim(), descripcion:$("#ndesc").value.trim(), prioridad:$("#nprio").value};
     try{ t.datos = leerCampos(t.tipo, "nc"); }catch(err){ return toast(err.message, true); }
     try{
       await conBoton($("#ncrear"), async () => {
@@ -1765,9 +1782,8 @@ async function abrirDetalle(id){
       ${st ? `<label class="f">Estado<select id="e_estado" ${estOK?"":"disabled"}>${(estOK?ABIERTOS_EDIT:[t.estado]).map(x=>`<option ${t.estado===x?"selected":""}>${x}</option>`).join("")}</select></label>
       <label class="f">Prioridad<select id="e_prioridad">${PRIORIDADES.map(x=>`<option ${t.prioridad===x?"selected":""}>${x}</option>`).join("")}</select></label>
       <label class="f">Asignado a<select id="e_asignado_email">${opcionesAtienden(t.asignado_email)}</select></label>
-      <label class="f">Fecha ETA (estimada de entrega)<input type="date" id="e_fecha_eta" value="${v("fecha_eta","")}"></label>` : ""}
+      <label class="f">Fecha estimada de entrega (ETA)<input type="date" id="e_fecha_eta" value="${v("fecha_eta","")}" ${enCola(t)?"":"disabled title='Se define cuando la solicitud llega a la cola de Pricing'"}></label>` : ""}
       <label class="f">Tipo<select id="e_tipo">${[...new Set([t.tipo, ...tiposActivos()])].map(x=>`<option ${t.tipo===x?"selected":""}>${esc(x)}</option>`).join("")}</select></label>
-      <label class="f">La necesita para<input type="date" id="e_fecha_vencimiento" value="${v("fecha_vencimiento","")}"></label>
       ${camposHTML(t.tipo, t.datos, "ec")}
       <label class="f full">Título<input type="text" id="e_titulo" value="${esc(t.titulo)}"></label>
       <label class="f full">Descripción<textarea id="e_descripcion" rows="4">${esc(v("descripcion",""))}</textarea></label>
@@ -1776,7 +1792,7 @@ async function abrirDetalle(id){
   } else {
     campos = `<dl class="kv">
       <dt>Prioridad</dt><dd>${tagPrio(t.prioridad)}</dd><dt>Asignado a</dt><dd>${esc(t.asignado_email?nombreDe(t.asignado_email):"Equipo de Pricing")}</dd>
-      <dt>Fecha estimada (ETA)</dt><dd>${fFecha(t.fecha_eta)}</dd><dt>La necesita para</dt><dd>${fFecha(t.fecha_vencimiento)}</dd>
+      <dt>Fecha estimada (ETA)</dt><dd>${t.fecha_eta ? fFecha(t.fecha_eta) + (staff() && alertaDe(t)==="Atrasada" ? ` <span class="tag t-brick">Atrasada ${diasAtraso(t)} d</span>` : "") : (enCola(t) ? "Pricing aún no la define" : "Se define cuando llegue a la cola de Pricing")}</dd>
       ${detalleKV(t)}</dl>
       ${t.descripcion ? `<h3 style="margin-top:12px">Descripción</h3><div class="desc">${esc(t.descripcion)}</div>` : ""}`;
   }
@@ -1864,7 +1880,7 @@ async function abrirDetalle(id){
   $("#fedit") && ($("#fedit").onsubmit = async e => {
     e.preventDefault(); const c = {};
     try{ const d = leerCampos(t.tipo, "ec", t.datos||{}); if(JSON.stringify(d)!==JSON.stringify(t.datos||{})) c.datos = d; }catch(err){ return toast(err.message, true); }
-    for(const k of ["estado","prioridad","asignado_email","fecha_eta","tipo","fecha_vencimiento","titulo","descripcion"]){
+    for(const k of ["estado","prioridad","asignado_email","fecha_eta","tipo","titulo","descripcion"]){
       const el = $("#e_"+k); if(!el || el.disabled) continue;
       let val = el.value.trim(); if(el.type==="number") val = val==="" ? null : Number(val); else if(val==="") val = null;
       const cur = t[k]==null || t[k]==="" ? null : (el.type==="number" ? Number(t[k]) : String(t[k]));
