@@ -295,10 +295,10 @@ const EVENTOS = {
   manager:"Al solicitante: decisión del manager", aprobacion:"Al aprobador (CEO): solicitud de aprobación",
   decision:"Al solicitante y al manager: decisión del CEO", nuevo:"Al encargado: solicitud asignada a su cola",
   info:"Al solicitante: Pricing necesita información", comentario:"Comentario nuevo (a la otra parte)",
-  eta:"Al solicitante: Pricing define o cambia la fecha estimada", devuelto:"Al manager: el encargado le devuelve una solicitud", cierre:"Al solicitante: ticket cerrado", cancelado:"A quien la tenía: el solicitante la canceló", cierre_manager:"Al manager: ticket cerrado", acceso:"Al administrador: alguien solicita acceso",
+  eta:"Al solicitante: Pricing define o cambia la fecha estimada", devuelto:"Al manager: el encargado le devuelve una solicitud", estado:"Al solicitante: su solicitud cambia de estado", cierre:"Al solicitante: ticket cerrado", cancelado:"A quien la tenía: el solicitante la canceló", cierre_manager:"Al manager: ticket cerrado", acceso:"Al administrador: alguien solicita acceso",
   bienvenida:"Al usuario nuevo: ya tiene acceso", codigo:"Código de ingreso (no se guarda copia)", prueba:"Correo de prueba"
 };
-const VARIABLES = ["codigo","titulo","tipo","cliente","prioridad","estado","descripcion","solicitante","encargado","vencimiento","eta",
+const VARIABLES = ["codigo","titulo","tipo","cliente","prioridad","estado","estado_anterior","descripcion","solicitante","encargado","vencimiento","eta",
   "monto","descuento","horas","resolucion","resultado","aprobacion","aprobador","manager","nota","comentario","decision","siguiente","autor","persona","correo","codigo_acceso","detalle","link"];
 const TIPOS_CAMPO = {texto:"Texto corto", parrafo:"Párrafo", numero:"Número", fecha:"Fecha", lista:"Lista de opciones", si_no:"Sí / No"};
 const CFG_DEFAULT = {
@@ -320,6 +320,7 @@ const CFG_DEFAULT = {
     cierre_manager:{asunto:"Solicitud cerrada · {codigo}: {resultado}", cuerpo:"Hola {manager},\n\nLa solicitud {codigo} · {titulo} de {solicitante} fue cerrada como {resultado} por {encargado}.\n\nTiempo de ejecución: {horas} h\n\nResolución:\n{resolucion}\n\n{link}"},
     info:{asunto:"Pricing necesita información · {codigo}", cuerpo:"Hola {solicitante},\n\nPara continuar con tu solicitud {codigo} · {titulo}, el equipo de Pricing necesita información adicional. Revisa los comentarios y responde en el ticket:\n{link}"},
     comentario:{asunto:"Nuevo comentario en {codigo}", cuerpo:"{autor} comentó en {codigo} · {titulo}:\n\n{comentario}\n\n{link}"},
+    estado:{asunto:"Tu solicitud {codigo} ahora está: {estado}", cuerpo:"Hola {solicitante},\n\nTu solicitud {codigo} · {titulo} cambió de estado:\n{estado_anterior} → {estado}\n\nFecha estimada: {eta}\nAtendida por: {encargado}\n\nPuedes ver su avance aquí:\n{link}"},
     devuelto:{asunto:"Solicitud devuelta para tu revisión · {codigo}", cuerpo:"Hola {manager},\n\n{autor} devolvió la solicitud {codigo} · {titulo} de {solicitante} para que la revises de nuevo.\n\nMotivo: {comentario}\n\nSi necesita {aprobacion}, márcalo al aprobarla.\n\n{link}"},
     eta:{asunto:"Fecha estimada para tu solicitud {codigo}", cuerpo:"Hola {solicitante},\n\nEl equipo de Pricing estima que tu solicitud {codigo} · {titulo} estará lista el {eta}.\n\nAtendida por: {encargado}\n\nPuedes ver su avance aquí:\n{link}"},
     cierre:{asunto:"Tu solicitud {codigo} fue cerrada: {resultado}", cuerpo:"Hola {solicitante},\n\nTu solicitud {codigo} · {titulo} fue cerrada como {resultado}.\n\nResolución:\n{resolucion}\n\nAtendida por: {encargado}\n\n{link}"},
@@ -725,6 +726,7 @@ const API_DEMO = {
     const t = Demo.t(id), antes = t.estado, asig = t.asignado_email, eta = t.fecha_eta; Demo.cambio(t, c);
     if(t.fecha_eta && t.fecha_eta!==eta && !t.cerrado_at) Demo.notificar(t, "eta", t.solicitante_email);
     if(t.estado==="En espera de información" && antes!==t.estado) Demo.notificar(t, "info", t.solicitante_email);
+    else if(antes!==t.estado && !t.cerrado_at && !["Revisión manager","Pendiente aprobación"].includes(antes)) Demo.notificar(t, "estado", t.solicitante_email, {estado_anterior:antes});
     if(t.asignado_email!==asig) Demo.notificar(t, "nuevo", t.asignado_email);
     Demo.save(); return clon(t);
   },
@@ -738,6 +740,7 @@ const API_DEMO = {
     Object.assign(t, {orden:null, manager_comentario:`Devuelta por ${S.me.nombre||S.me.email}: ${motivo}`, manager_resuelto_at:null, manager_resuelto_por:null});
     Demo.log(id, "Devolución al manager", null, null, mgr, motivo);
     Demo.notificar(t, "devuelto", mgr, {autor:S.me.nombre||S.me.email, comentario:motivo});
+    Demo.notificar(t, "estado", t.solicitante_email, {estado_anterior:"En cola"});
     Demo.save(); return clon(t);
   },
   async solicitarAprob(id, nota){
@@ -1804,7 +1807,7 @@ async function abrirDetalle(id){
       ${camposHTML(t.tipo, t.datos, "ec")}
       <label class="f full">Título<input type="text" id="e_titulo" value="${esc(t.titulo)}"></label>
       <label class="f full">Descripción<textarea id="e_descripcion" rows="4">${esc(v("descripcion",""))}</textarea></label>
-      <div class="full row" style="justify-content:flex-end"><button class="btn" type="submit">Guardar cambios</button></div>
+      <div class="full row" style="justify-content:flex-end"><button class="btn pri" type="submit">Guardar cambios</button></div>
     </form>`;
   } else {
     campos = `<dl class="kv">
