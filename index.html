@@ -402,6 +402,7 @@ function alertaDe(t){
   if(t.aprob_estado==="Pendiente" && t.aprob_enviado_at && (Date.now()-new Date(t.aprob_enviado_at)) > (+a.dias_aprob_demora||2)*864e5) return "Aprobación demorada";
   return null;
 }
+const tagPrueba = t => t && t.es_prueba ? `<span class="tag t-gray" title="Dato de prueba: se quita desde Configuración">Prueba</span>` : "";
 const tagAlerta = a => !a ? "" : `<span class="tag ${a==="Atrasada"?"t-brick":a==="Sin estimado"?"t-gray":"t-olive"}">${esc(a)}</span>`;
 // Días de atraso contra la fecha estimada (ETA): abiertos → hasta hoy; cerrados → hasta el cierre
 const diasAtraso = t => { if(!t.fecha_eta) return 0; const fin = esCerrado(t) ? dia(t.cerrado_at) : hoy(); return Math.max(0, diasEntre(t.fecha_eta, fin)); };
@@ -470,6 +471,8 @@ const API_SB = {
   async cambiarPin(actual, nuevo){ chk(await sb.rpc("pricing_cambiar_pin",{p_actual:actual, p_nuevo:nuevo})); },
   async resetPin(uid){ chk(await sb.rpc("pricing_reset_pin",{p_user:uid})); },
   async solicitarAcceso(email, nombre, com){ return chk(await sb.rpc("pricing_solicitar_acceso",{p_email:email, p_nombre:nombre, p_comentario:com||null})); },
+  async demoCargar(){ return chk(await sb.rpc("pricing_demo_cargar")); },
+  async demoQuitar(){ return chk(await sb.rpc("pricing_demo_quitar")); },
   async solicitudesAcceso(){ return chk(await sb.from("pricing_solicitudes_acceso").select("*").eq("estado","Pendiente").order("id")); },
   async resolverAcceso(id, estado){ chk(await sb.rpc("pricing_resolver_acceso",{p_id:id, p_estado:estado})); },
   async bienvenida(email){ chk(await sb.rpc("pricing_bienvenida",{p_email:email})); },
@@ -656,6 +659,20 @@ const API_DEMO = {
     Demo.db.solicitudes.push({id:Date.now(), email:lower(email), nombre, comentario:com||null, estado:"Pendiente", created_at:Demo.ahora()});
     Demo.db.usuarios.filter(u => u.rol==="admin" && u.activo).forEach(a => Demo.notificar(null, "acceso", a.email, {persona:nombre, correo:lower(email), comentario:com||"—"}));
     Demo.save(); return "ok"; },
+  async demoCargar(){
+    const db = Demo.db; if(db.tickets.some(t => t.es_prueba)) throw new Error("Ya hay datos de prueba cargados. Quítalos antes de cargarlos de nuevo.");
+    const x = Demo.seed(), off = db.seq.t, ord = Demo.sigOrden();
+    x.tickets.forEach(t => { t.id += off; t.codigo = "PRC-"+String(t.id).padStart(5,"0"); t.es_prueba = true; if(t.orden) t.orden += ord; db.tickets.push(t); });
+    x.bitacora.forEach(b => { b.id = ++db.seq.b; b.ticket_id += off; db.bitacora.push(b); });
+    x.horas.forEach(h => { h.id = ++db.seq.h; h.ticket_id += off; db.horas.push(h); });
+    db.seq.t += x.tickets.length; Demo.save(); return x.tickets.length;
+  },
+  async demoQuitar(){
+    const db = Demo.db, ids = new Set(db.tickets.filter(t => t.es_prueba).map(t => t.id));
+    db.tickets = db.tickets.filter(t => !ids.has(t.id));
+    for(const k of ["bitacora","horas","adjuntos","notifs"]) db[k] = (db[k]||[]).filter(x => !ids.has(x.ticket_id));
+    Demo.save(); return ids.size;
+  },
   async solicitudesAcceso(){ return clon((Demo.db.solicitudes||[]).filter(x => x.estado==="Pendiente")); },
   async resolverAcceso(id, estado){ const r = (Demo.db.solicitudes||[]).find(x => x.id===id); if(r){ r.estado = estado;
     if(estado==="Aprobada") Demo.notificar(null, "bienvenida", r.email, {persona:r.nombre, correo:r.email}); } Demo.save(); },
@@ -1119,7 +1136,7 @@ function vMis(){
     else if(c) msg = `<div class="b" style="margin-bottom:2px">${c.adelante===0 ? (t.estado==="En análisis" ? "¡Tu solicitud se está atendiendo!" : "¡Tu solicitud es la siguiente!") : `Hay ${c.adelante} solicitud${c.adelante>1?"es":""} antes de la tuya`}</div>${pista(c)}`;
     return `<div class="mcard">
       <div class="hdr" data-open="${t.id}"><div class="grow">
-        <div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span>${tagEstado(t.estado)}${tagAprob(t)}</div>
+        <div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span>${tagEstado(t.estado)}${tagAprob(t)}${tagPrueba(t)}</div>
         <div class="b" style="margin-top:4px">${esc(t.titulo)}</div>
         <div class="sub">${esc(tipoTxt(t))} · enviada ${hace(t.created_at)}${t.fecha_eta?` · fecha estimada <b>${fFecha(t.fecha_eta)}</b>`:(enCola(t)?" · Pricing aún no define la fecha estimada":"")}</div></div>
         <div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn sm ghost" data-cancel="${t.id}" style="color:var(--brick)">Cancelar</button><span class="btn sm">Ver detalle</span></div></div>
@@ -1168,13 +1185,14 @@ function vInicio(){
   $("#main").innerHTML = `
     <div class="page-h"><div class="grow"><h1>Hola, ${esc((S.me.nombre||"").split(" ")[0] || "equipo")}</h1><p class="muted small">${new Date().toLocaleDateString("es-CR",{weekday:"long", day:"numeric", month:"long"})}</p></div>
       <button class="btn sm" id="recargar">Actualizar</button></div>
+    ${rol()==="admin" && nPrueba() ? `<div class="banner" style="margin:0 0 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="grow">Estás viendo <b>${nPrueba()}</b> solicitudes de prueba.</span><button class="btn sm danger" data-prueba="quitar">Quitar datos de prueba</button></div>` : ""}
     <div class="grid kpis">${k.map(([l,v,c,f],i) => `<button class="kpi ${c}" data-k="${i}" ${f?"":"disabled style='cursor:default'"}><div class="v num">${v}</div><div class="l">${l}</div></button>`).join("")}</div>
     <div class="page-h" style="margin-top:22px;margin-bottom:10px"><div class="grow"><h2 style="margin:0">Cola de atención</h2>
       <p class="hint">Arrastra desde ⠿ (o usa ▲ ▼) para cambiar el orden en que se atienden. El #1 es el siguiente.</p></div>
       <label class="check small"><input type="checkbox" id="solomios" ${S.soloMios?"checked":""}> Solo asignados a mí</label></div>
     ${lista.length ? `<div class="queue" id="queue">${lista.map(t => `<div class="qi ${pos.get(t.id)===1?"first":""}" data-id="${t.id}">
         <div class="hd" title="Arrastrar">⠿</div><div class="pos">${pos.get(t.id)}</div>
-        <div class="main" data-open="${t.id}"><div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span><span class="tt ell grow">${esc(t.titulo)}</span></div>
+        <div class="main" data-open="${t.id}"><div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span>${tagPrueba(t)}<span class="tt ell grow">${esc(t.titulo)}</span></div>
           <div class="meta">${tagPrio(t.prioridad)}${tagEstado(t.estado)}${tagAprob(t)}${tagAlerta(alertaDe(t))}
             <span class="sub">${esc(nombreDe(t.solicitante_email))} · ${hace(t.created_at)}</span>
             ${puedeEta(t) ? `<label class="eta-in ${t.fecha_eta?"":"falta"}" data-stop>Estimado <input type="date" data-eta="${t.id}" value="${t.fecha_eta||""}" min="${dia(t.created_at)}"></label>`
@@ -1240,7 +1258,7 @@ function tablaTickets(lista, cerrada=false){
     <th>Ticket</th><th>Solicitud</th><th>Solicitante</th><th>Prioridad</th><th>Estado</th><th>Asignado</th>
     ${cerrada ? `<th>Cerrado</th><th class="r">Días</th><th class="r">Horas</th>` : `<th>Fecha estimada</th><th class="r">Atraso</th><th></th>`}
     </tr></thead><tbody>${lista.map(t => `<tr class="click" data-open="${t.id}">
-      <td class="code">${esc(t.codigo)}</td>
+      <td class="code">${esc(t.codigo)} ${tagPrueba(t)}</td>
       <td><div class="b">${esc(t.titulo)}</div><div class="sub">${esc(tipoTxt(t))}</div></td>
       <td class="small">${esc(nombreDe(t.solicitante_email))}</td><td>${tagPrio(t.prioridad)}</td><td>${tagEstado(t.estado)} ${tagAprob(t)}</td>
       <td class="small">${esc(t.asignado_email ? nombreDe(t.asignado_email) : "Sin asignar")}</td>
@@ -1442,7 +1460,7 @@ function vRevision(){
   $("#main").innerHTML = `
     <div class="page-h"><div class="grow"><h1>Revisión de solicitudes</h1><p class="muted small">Aprueba o rechaza cada solicitud. Si la apruebas, decide si necesita ${esc(aprobTitulo())} o pasa directo al encargado de Pricing.</p></div></div>
     ${pend.length ? `<div class="grid" style="gap:12px">${pend.map(t => `<div class="card">
-        <div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span>${tagPrio(t.prioridad)}${tagAlerta(alertaDe(t))}<span class="sub grow">recibida ${hace(t.created_at)}${lower(t.manager_email)!==S.me.email?` · para ${esc(nombreDe(t.manager_email))}`:""}</span></div>
+        <div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span>${tagPrio(t.prioridad)}${tagAlerta(alertaDe(t))}${tagPrueba(t)}<span class="sub grow">recibida ${hace(t.created_at)}${lower(t.manager_email)!==S.me.email?` · para ${esc(nombreDe(t.manager_email))}`:""}</span></div>
         <h2 style="margin:6px 0 2px">${esc(t.titulo)}</h2>
         <div class="sub" style="margin-bottom:10px">${esc(tipoTxt(t))} · solicitado por ${esc(nombreDe(t.solicitante_email))}</div>
         ${t.manager_comentario?`<div class="banner" style="margin:0 0 10px">${esc(t.manager_comentario)}</div>`:""}
@@ -1475,7 +1493,7 @@ function vAprobaciones(){
   $("#main").innerHTML = `
     <div class="page-h"><div class="grow"><h1>${esc(aprobTitulo())}</h1><p class="muted small">Solicitudes de Pricing que esperan tu decisión.</p></div></div>
     ${pend.length ? `<div class="grid" style="gap:12px">${pend.map(t => `<div class="card">
-        <div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span>${tagPrio(t.prioridad)}${tagAlerta(alertaDe(t))}<span class="sub grow">enviada ${hace(t.aprob_enviado_at)}${lower(t.aprob_email)!==S.me.email?` · para ${esc(nombreDe(t.aprob_email))}`:""}</span></div>
+        <div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span>${tagPrio(t.prioridad)}${tagAlerta(alertaDe(t))}${tagPrueba(t)}<span class="sub grow">enviada ${hace(t.aprob_enviado_at)}${lower(t.aprob_email)!==S.me.email?` · para ${esc(nombreDe(t.aprob_email))}`:""}</span></div>
         <h2 style="margin:6px 0 2px">${esc(t.titulo)}</h2>
         <div class="sub" style="margin-bottom:10px">${esc(tipoTxt(t))} · solicitado por ${esc(nombreDe(t.solicitante_email))}</div>
         <dl class="kv">${detalleKV(t)}</dl>
@@ -1564,6 +1582,29 @@ async function vUsuarios(){
 /* =====================================================================
    Configuración (administrador)
    ===================================================================== */
+// Datos de prueba: el admin carga solicitudes de ejemplo para mostrar la app y las quita con un clic
+const nPrueba = () => S.tickets.filter(t => t.es_prueba).length;
+function cardPrueba(){
+  const n = nPrueba();
+  return `<div class="card" style="margin-bottom:16px"><div class="row" style="gap:16px;flex-wrap:wrap;align-items:center">
+    <div class="grow" style="min-width:260px"><h2 style="margin:0 0 4px">Datos de prueba</h2>
+      <div class="small muted">${n ? `Hay <b>${n}</b> solicitudes de prueba cargadas (marcadas con la etiqueta <span class="tag t-gray">Prueba</span>). Quítalas antes de empezar a usar la app en serio.`
+        : "Carga unas 50 solicitudes de ejemplo (histórico de 6 meses, cola con atrasadas y por vencer, revisión del manager y aprobación del CEO) para mostrar la app. No envían correos a los solicitantes ficticios y no aparecen en los reportes de Power BI."}</div></div>
+    ${n ? `<button class="btn danger" data-prueba="quitar">Quitar datos de prueba (${n})</button>` : `<button class="btn pri" data-prueba="cargar">Cargar datos de prueba</button>`}
+  </div></div>`;
+}
+document.addEventListener("click", async ev => {
+  const b = ev.target.closest("[data-prueba]"); if(!b || rol()!=="admin") return;
+  const n = nPrueba();
+  if(b.dataset.prueba==="cargar"){
+    if(!confirm("Se cargarán unas 50 solicitudes de ejemplo para mostrar la app.\nNo envían correos a los solicitantes ficticios y no aparecen en Power BI.\n\n¿Continuar?")) return;
+    try{ const c = await conBoton(b, () => API.demoCargar()); toast(`Se cargaron ${c} solicitudes de prueba`); await refrescar(); }catch(e){ fallo(e); }
+  } else {
+    if(!confirm(`Se borrarán las ${n} solicitudes de prueba con su historial, horas y avisos.\nTus solicitudes reales no se tocan.\n\n¿Continuar?`)) return;
+    try{ const c = await conBoton(b, () => API.demoQuitar()); toast(`Se quitaron ${c} solicitudes de prueba`); await refrescar(); }catch(e){ fallo(e); }
+  }
+});
+
 async function vConfig(){
   const c = S.cfg, ap = c.aprobacion, as = c.asignacion, rv = c.revision || {default_email:"", por_tipo:{}}, app = c.app;
   const act = S.usuarios.filter(u => u.activo);
@@ -1573,6 +1614,7 @@ async function vConfig(){
   const aprobUser = act.find(u => lower(u.email)===lower(ap.email));
   $("#main").innerHTML = `
     <div class="page-h"><div class="grow"><h1>Configuración</h1><p class="muted small">Estos cambios aplican de inmediato para todos.</p></div></div>
+    ${cardPrueba()}
     <div class="grid halves">
       <div class="card"><h2>Aprobación</h2>
         <div class="form">
@@ -1873,7 +1915,7 @@ async function abrirDetalle(id){
 
   modal(`
     <div class="modal-h">
-      <div><div class="row" style="gap:8px"><span class="code" style="font-size:16px">${esc(t.codigo)}</span>${tagEstado(t.estado)}${tagAprob(t)}${tagAlerta(a)}${!cerrado&&st&&pos?`<span class="tag t-slate">#${pos} en cola</span>`:""}</div>
+      <div><div class="row" style="gap:8px"><span class="code" style="font-size:16px">${esc(t.codigo)}</span>${tagEstado(t.estado)}${tagAprob(t)}${tagAlerta(a)}${tagPrueba(t)}${!cerrado&&st&&pos?`<span class="tag t-slate">#${pos} en cola</span>`:""}</div>
         <h1 style="margin-top:6px">${esc(t.titulo)}</h1>
         <div class="muted small">${esc(tipoTxt(t))} · Solicitado por ${esc(nombreDe(t.solicitante_email))} el ${fFecha(t.created_at)}</div></div>
       <button class="x">×</button>
