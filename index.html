@@ -402,6 +402,7 @@ function alertaDe(t){
   if(t.aprob_estado==="Pendiente" && t.aprob_enviado_at && (Date.now()-new Date(t.aprob_enviado_at)) > (+a.dias_aprob_demora||2)*864e5) return "Aprobación demorada";
   return null;
 }
+const MAX_ADJUNTO = 10 * 1048576;   // 10 MB por archivo (igual que el límite del bucket)
 const tagPrueba = t => t && t.es_prueba ? `<span class="tag t-gray" title="Dato de prueba: se quita desde Configuración">Prueba</span>` : "";
 const tagAlerta = a => !a ? "" : `<span class="tag ${a==="Atrasada"?"t-brick":a==="Sin estimado"?"t-gray":"t-olive"}">${esc(a)}</span>`;
 // Días de atraso contra la fecha estimada (ETA): abiertos → hasta hoy; cerrados → hasta el cierre
@@ -472,7 +473,16 @@ const API_SB = {
   async resetPin(uid){ chk(await sb.rpc("pricing_reset_pin",{p_user:uid})); },
   async solicitarAcceso(email, nombre, com){ return chk(await sb.rpc("pricing_solicitar_acceso",{p_email:email, p_nombre:nombre, p_comentario:com||null})); },
   async demoCargar(){ return chk(await sb.rpc("pricing_demo_cargar")); },
-  async demoQuitar(){ return chk(await sb.rpc("pricing_demo_quitar")); },
+  async demoQuitar(){
+    // Primero los archivos adjuntos de los tickets de prueba (Storage), luego los registros
+    const ids = S.tickets.filter(t => t.es_prueba).map(t => t.id);
+    for(let i = 0; i < ids.length; i += 100){
+      const rutas = (chk(await sb.from("pricing_adjuntos").select("ruta").in("ticket_id", ids.slice(i, i+100))) || []).map(a => a.ruta);
+      if(rutas.length) chk(await sb.storage.from("pricing-adjuntos").remove(rutas));
+    }
+    return chk(await sb.rpc("pricing_demo_quitar"));
+  },
+  async usoAlmacenamiento(limpiar){ return chk(await sb.rpc("pricing_uso_almacenamiento", {p_limpiar:!!limpiar})); },
   async solicitudesAcceso(){ return chk(await sb.from("pricing_solicitudes_acceso").select("*").eq("estado","Pendiente").order("id")); },
   async resolverAcceso(id, estado){ chk(await sb.rpc("pricing_resolver_acceso",{p_id:id, p_estado:estado})); },
   async bienvenida(email){ chk(await sb.rpc("pricing_bienvenida",{p_email:email})); },
@@ -502,6 +512,7 @@ const API_SB = {
   async nota(id, accion, comentario, valor){ chk(await sb.from("pricing_bitacora").insert({ticket_id:id, accion, comentario:comentario||null, valor_nuevo:valor||null})); },
   async adjuntos(id){ return chk(await sb.from("pricing_adjuntos").select("*").eq("ticket_id", id).order("created_at")); },
   async subir(id, file){
+    if(file.size > MAX_ADJUNTO) throw new Error(`"${file.name}" pesa ${fNum(file.size/1048576,1)} MB; el máximo es 10 MB por archivo`);
     const ruta = `${id}/${Date.now()}_${file.name.replace(/[^\w.\-]+/g,"_")}`;
     chk(await sb.storage.from("pricing-adjuntos").upload(ruta, file));
     chk(await sb.from("pricing_adjuntos").insert({ticket_id:id, nombre:file.name, ruta, tamano:file.size}));
@@ -667,6 +678,10 @@ const API_DEMO = {
     x.horas.forEach(h => { h.id = ++db.seq.h; h.ticket_id += off; db.horas.push(h); });
     db.seq.t += x.tickets.length; Demo.save(); return x.tickets.length;
   },
+  async usoAlmacenamiento(limpiar){ const kb = JSON.stringify(Demo.db).length;
+    return {base_total:kb, tablas:[["pricing_tickets",Demo.db.tickets],["pricing_bitacora",Demo.db.bitacora],["pricing_notificaciones",Demo.db.notifs],["pricing_horas",Demo.db.horas]]
+      .map(([tabla,l]) => ({tabla, filas:l.length, bytes:JSON.stringify(l).length})), adjuntos_archivos:Demo.db.adjuntos.length, adjuntos_bytes:Demo.db.adjuntos.reduce((s,a)=>s+(a.tamano||0),0),
+      limpieza: limpiar ? {avisos:0, codigos:0, solicitudes_acceso:0} : null}; },
   async demoQuitar(){
     const db = Demo.db, ids = new Set(db.tickets.filter(t => t.es_prueba).map(t => t.id));
     db.tickets = db.tickets.filter(t => !ids.has(t.id));
@@ -810,7 +825,7 @@ const API_DEMO = {
     Demo.save();
   },
   async adjuntos(id){ return clon(Demo.db.adjuntos.filter(a => a.ticket_id===id)); },
-  async subir(id, file){ Demo.db.adjuntos.push({id:++Demo.db.seq.a, ticket_id:id, nombre:file.name, ruta:"demo", tamano:file.size, subido_por:S.me.email, created_at:Demo.ahora()});
+  async subir(id, file){ if(file.size > MAX_ADJUNTO) throw new Error(`"${file.name}" pesa ${fNum(file.size/1048576,1)} MB; el máximo es 10 MB por archivo`); Demo.db.adjuntos.push({id:++Demo.db.seq.a, ticket_id:id, nombre:file.name, ruta:"demo", tamano:file.size, subido_por:S.me.email, created_at:Demo.ahora()});
     Demo.log(id, "Adjunto", null, null, file.name); Demo.save(); },
   async urlAdjunto(){ throw new Error("En modo demo los archivos no se guardan"); },
   async guardarUsuario(id, c){ Object.assign(Demo.db.usuarios.find(u=>u.id===id), c); Demo.save(); },
@@ -1593,6 +1608,25 @@ function cardPrueba(){
     ${n ? `<button class="btn danger" data-prueba="quitar">Quitar datos de prueba (${n})</button>` : `<button class="btn pri" data-prueba="cargar">Cargar datos de prueba</button>`}
   </div></div>`;
 }
+const fBytes = n => n >= 1073741824 ? fNum(n/1073741824,2)+" GB" : n >= 1048576 ? fNum(n/1048576,1)+" MB" : fNum(n/1024,0)+" KB";
+const TABLAS_TXT = {pricing_tickets:"Solicitudes", pricing_bitacora:"Bitácora (historial)", pricing_notificaciones:"Avisos y correos", pricing_horas:"Horas",
+  pricing_adjuntos:"Adjuntos (registros)", pricing_usuarios:"Usuarios", pricing_config:"Configuración", pricing_codigos:"Códigos de ingreso",
+  pricing_pins:"PIN", pricing_solicitudes_acceso:"Solicitudes de acceso"};
+document.addEventListener("click", async ev => {
+  const b = ev.target.closest("[data-alm]"); if(!b || rol()!=="admin") return;
+  try{
+    const r = await conBoton(b, () => API.usoAlmacenamiento(b.dataset.alm==="limpiar"));
+    const app = (r.tablas||[]).reduce((s,t) => s + Number(t.bytes||0), 0);
+    $("#alm_res").innerHTML = `<div class="tbl-wrap" style="margin-top:12px"><table><thead><tr><th>Qué</th><th class="r">Registros</th><th class="r">Espacio</th></tr></thead><tbody>
+      ${(r.tablas||[]).map(t => `<tr><td>${esc(TABLAS_TXT[t.tabla]||t.tabla)}</td><td class="r num">${fNum(Math.max(0,t.filas),0)}</td><td class="r num">${fBytes(Number(t.bytes))}</td></tr>`).join("")}
+      <tr><td><b>Total de la app en la base de datos</b></td><td></td><td class="r num"><b>${fBytes(app)}</b></td></tr>
+      <tr><td>Base de datos completa del proyecto <span class="small muted">(incluye lo interno de Supabase · el plan Pro incluye 8 GB)</span></td><td></td><td class="r num">${fBytes(Number(r.base_total))}</td></tr>
+      <tr><td>Archivos adjuntos <span class="small muted">(Storage · el plan Pro incluye 100 GB · máx. 10 MB por archivo)</span></td><td class="r num">${fNum(r.adjuntos_archivos,0)}</td><td class="r num">${fBytes(Number(r.adjuntos_bytes))}</td></tr>
+      </tbody></table></div>
+      <div class="row" style="margin-top:10px;gap:10px;align-items:center">${r.limpieza ? `<span class="small muted grow">Limpieza hecha: ${r.limpieza.avisos} avisos antiguos y ${r.limpieza.codigos} códigos vencidos borrados.</span>` : `<span class="grow"></span>`}
+      <button class="btn sm" data-alm="limpiar">Limpiar ahora</button></div>`;
+  }catch(e){ fallo(e); }
+});
 document.addEventListener("click", async ev => {
   const b = ev.target.closest("[data-prueba]"); if(!b || rol()!=="admin") return;
   const n = nPrueba();
@@ -1615,6 +1649,10 @@ async function vConfig(){
   $("#main").innerHTML = `
     <div class="page-h"><div class="grow"><h1>Configuración</h1><p class="muted small">Estos cambios aplican de inmediato para todos.</p></div></div>
     ${cardPrueba()}
+    <div class="card" style="margin-bottom:16px" id="alm"><div class="row" style="gap:16px;flex-wrap:wrap;align-items:center">
+      <div class="grow" style="min-width:260px"><h2 style="margin:0 0 4px">Almacenamiento</h2>
+        <div class="small muted">Cuánto ocupa la app en Supabase. Los avisos de más de 6 meses y los códigos vencidos se borran solos.</div></div>
+      <button class="btn" data-alm="ver">Ver uso</button></div><div id="alm_res"></div></div>
     <div class="grid halves">
       <div class="card"><h2>Aprobación</h2>
         <div class="form">
