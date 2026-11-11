@@ -295,7 +295,7 @@ const EVENTOS = {
   manager:"Al solicitante: decisión del manager", aprobacion:"Al aprobador (CEO): solicitud de aprobación",
   decision:"Al solicitante y al manager: decisión del CEO", nuevo:"Al encargado: solicitud asignada a su cola",
   info:"Al solicitante: Pricing necesita información", comentario:"Comentario nuevo (a la otra parte)",
-  eta:"Al solicitante: Pricing define o cambia la fecha estimada", cierre:"Al solicitante: ticket cerrado", cancelado:"A quien la tenía: el solicitante la canceló", cierre_manager:"Al manager: ticket cerrado", acceso:"Al administrador: alguien solicita acceso",
+  eta:"Al solicitante: Pricing define o cambia la fecha estimada", devuelto:"Al manager: el encargado le devuelve una solicitud", cierre:"Al solicitante: ticket cerrado", cancelado:"A quien la tenía: el solicitante la canceló", cierre_manager:"Al manager: ticket cerrado", acceso:"Al administrador: alguien solicita acceso",
   bienvenida:"Al usuario nuevo: ya tiene acceso", codigo:"Código de ingreso (no se guarda copia)", prueba:"Correo de prueba"
 };
 const VARIABLES = ["codigo","titulo","tipo","cliente","prioridad","estado","descripcion","solicitante","encargado","vencimiento","eta",
@@ -320,6 +320,7 @@ const CFG_DEFAULT = {
     cierre_manager:{asunto:"Solicitud cerrada · {codigo}: {resultado}", cuerpo:"Hola {manager},\n\nLa solicitud {codigo} · {titulo} de {solicitante} fue cerrada como {resultado} por {encargado}.\n\nTiempo de ejecución: {horas} h\n\nResolución:\n{resolucion}\n\n{link}"},
     info:{asunto:"Pricing necesita información · {codigo}", cuerpo:"Hola {solicitante},\n\nPara continuar con tu solicitud {codigo} · {titulo}, el equipo de Pricing necesita información adicional. Revisa los comentarios y responde en el ticket:\n{link}"},
     comentario:{asunto:"Nuevo comentario en {codigo}", cuerpo:"{autor} comentó en {codigo} · {titulo}:\n\n{comentario}\n\n{link}"},
+    devuelto:{asunto:"Solicitud devuelta para tu revisión · {codigo}", cuerpo:"Hola {manager},\n\n{autor} devolvió la solicitud {codigo} · {titulo} de {solicitante} para que la revises de nuevo.\n\nMotivo: {comentario}\n\nSi necesita {aprobacion}, márcalo al aprobarla.\n\n{link}"},
     eta:{asunto:"Fecha estimada para tu solicitud {codigo}", cuerpo:"Hola {solicitante},\n\nEl equipo de Pricing estima que tu solicitud {codigo} · {titulo} estará lista el {eta}.\n\nAtendida por: {encargado}\n\nPuedes ver su avance aquí:\n{link}"},
     cierre:{asunto:"Tu solicitud {codigo} fue cerrada: {resultado}", cuerpo:"Hola {solicitante},\n\nTu solicitud {codigo} · {titulo} fue cerrada como {resultado}.\n\nResolución:\n{resolucion}\n\nAtendida por: {encargado}\n\n{link}"},
     acceso:{asunto:"Solicitud de acceso a Pricing Desk: {persona}", cuerpo:"{persona} ({correo}) solicita acceso a Pricing Desk.\n\nMotivo: {comentario}\n\nApruébalo o descártalo en la pestaña Usuarios:\n{link}"},
@@ -487,6 +488,7 @@ const API_SB = {
   async cancelar(id, motivo){ return uno(chk(await sb.rpc("pricing_cancelar",{p_ticket:id, p_motivo:motivo||null}))); },
   async revisar(id, dec, ceo, com){ return uno(chk(await sb.rpc("pricing_revisar",{p_ticket:id, p_decision:dec, p_requiere_ceo:!!ceo, p_comentario:com||null}))); },
   async solicitarAprob(id, nota){ return uno(chk(await sb.rpc("pricing_solicitar_aprobacion",{p_ticket:id, p_nota:nota||null}))); },
+  async devolver(id, motivo){ return uno(chk(await sb.rpc("pricing_devolver_manager",{p_ticket:id, p_motivo:motivo}))); },
   async resolverAprob(id, dec, com){ return uno(chk(await sb.rpc("pricing_resolver_aprobacion",{p_ticket:id, p_decision:dec, p_comentario:com||null}))); },
   async cerrar(id, res, horas, txt){ return uno(chk(await sb.rpc("pricing_cerrar",{p_ticket:id, p_resultado:res, p_horas:horas, p_resolucion:txt}))); },
   async reabrir(id, motivo){ return uno(chk(await sb.rpc("pricing_reabrir",{p_ticket:id, p_motivo:motivo}))); },
@@ -726,7 +728,20 @@ const API_DEMO = {
     if(t.asignado_email!==asig) Demo.notificar(t, "nuevo", t.asignado_email);
     Demo.save(); return clon(t);
   },
+  async devolver(id, motivo){
+    const t = Demo.t(id), cfg = Demo.db.cfg; motivo = (motivo||"").trim();
+    if(!ABIERTOS_EDIT.includes(t.estado) || t.cerrado_at) throw new Error("Solo se devuelven solicitudes que están en la cola de Pricing");
+    if(!motivo) throw new Error("Indica el motivo de la devolución");
+    const mgr = t.manager_email || lower(((cfg.revision||{}).por_tipo||{})[t.tipo] || (cfg.revision||{}).default_email) || null;
+    if(!mgr) throw new Error("No hay un manager de revisión configurado para este tipo de solicitud");
+    Demo.cambio(t, {estado:"Revisión manager", manager_email:mgr, manager_estado:"Pendiente"});
+    Object.assign(t, {orden:null, manager_comentario:`Devuelta por ${S.me.nombre||S.me.email}: ${motivo}`, manager_resuelto_at:null, manager_resuelto_por:null});
+    Demo.log(id, "Devolución al manager", null, null, mgr, motivo);
+    Demo.notificar(t, "devuelto", mgr, {autor:S.me.nombre||S.me.email, comentario:motivo});
+    Demo.save(); return clon(t);
+  },
   async solicitarAprob(id, nota){
+    throw new Error("La aprobación del CEO solo se pide en la revisión del manager");
     const t = Demo.t(id), ap = Demo.db.cfg.aprobacion;
     if(!ap.email) throw new Error("El administrador aún no configura el aprobador");
     if(t.aprob_estado==="Pendiente") throw new Error("Ya tiene una aprobación pendiente");
@@ -1418,6 +1433,7 @@ function vHoras(){
    ===================================================================== */
 function vRevision(){
   const pend = misRevisiones().concat(rol()==="admin" ? S.tickets.filter(t => t.estado==="Revisión manager" && lower(t.manager_email)!==S.me.email) : []);
+  pend.sort((a,b) => (!!b.manager_comentario) - (!!a.manager_comentario));   // las devueltas por el encargado primero
   const hechas = S.tickets.filter(t => lower(t.manager_resuelto_por)===S.me.email).sort((a,b) => (b.manager_resuelto_at||"").localeCompare(a.manager_resuelto_at||"")).slice(0,40);
   const ap = S.cfg.aprobacion;
   $("#main").innerHTML = `
@@ -1426,6 +1442,7 @@ function vRevision(){
         <div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span>${tagPrio(t.prioridad)}${tagAlerta(alertaDe(t))}<span class="sub grow">recibida ${hace(t.created_at)}${lower(t.manager_email)!==S.me.email?` · para ${esc(nombreDe(t.manager_email))}`:""}</span></div>
         <h2 style="margin:6px 0 2px">${esc(t.titulo)}</h2>
         <div class="sub" style="margin-bottom:10px">${esc(tipoTxt(t))} · solicitado por ${esc(nombreDe(t.solicitante_email))}</div>
+        ${t.manager_comentario?`<div class="banner" style="margin:0 0 10px">${esc(t.manager_comentario)}</div>`:""}
         <dl class="kv">${detalleKV(t)}</dl>
         ${t.descripcion?`<div class="desc" style="margin-top:10px">${esc(t.descripcion)}</div>`:""}
         <label class="f" style="margin-top:12px">Comentario (obligatorio si rechazas; lo verá el solicitante)<textarea data-rcom="${t.id}" rows="2"></textarea></label>
@@ -1802,7 +1819,7 @@ async function abrirDetalle(id){
   if(st && !cerrado){
     acciones = `<div class="actions" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
       ${puedeCerrar(t) ? `<button class="btn pri" id="a_cerrar" ${t.aprob_estado==="Pendiente"?"disabled title='Hay una aprobación pendiente'":""}>Cerrar ticket…</button>` : ""}
-      ${ap.email && enCola(t) && ["manager","admin"].includes(rol()) && t.aprob_estado!=="Pendiente" ? `<button class="btn olive" id="a_aprob">Solicitar ${esc(ap.titulo)}</button>` : ""}
+      ${puedeCerrar(t) ? `<button class="btn" id="a_devolver" title="Por ejemplo, si requiere ${esc(aprobTitulo())}: el manager la revisa de nuevo y decide">Devolver al manager…</button>` : ""}
       ${!enCola(t) ? `<span class="hint">${t.estado==="Revisión manager" ? "Esperando la revisión del manager." : `Esperando ${esc(aprobTitulo())}.`} El encargado podrá trabajarla cuando pase a la cola.</span>` : ""}</div>`;
   } else if(st && cerrado && staff()){
     acciones = `<div class="actions" style="margin-top:12px"><button class="btn" id="a_reabrir">Reabrir ticket</button></div>`;
@@ -1825,11 +1842,12 @@ async function abrirDetalle(id){
   let revision = "";
   if(esRevisorDe(t)){
     revision = `<div class="box ap"><h3>Tu revisión como manager</h3>
+      ${t.manager_comentario?`<div class="banner" style="margin:0 0 8px">${esc(t.manager_comentario)}</div>`:""}
       <label class="f">Comentario (obligatorio si rechazas)<textarea id="rv_com" rows="3"></textarea></label>
       ${ap.email ? `<label class="check" style="margin-top:8px"><input type="checkbox" id="rv_ceo"> Requiere ${esc(ap.titulo)}${ap.nombre?` (${esc(ap.nombre)})`:""}</label>` : ""}
       <div class="actions" style="margin-top:10px"><button class="btn pri" id="rv_ok">Aprobar</button><button class="btn danger" id="rv_no">Rechazar</button></div></div>`;
   } else if(t.manager_estado==="Pendiente"){
-    revision = `<div class="box ap"><h3>En revisión del manager</h3><div class="small">Con <b>${esc(nombreDe(t.manager_email))}</b> desde ${fFechaHora(t.created_at)}</div></div>`;
+    revision = `<div class="box ap"><h3>En revisión del manager</h3><div class="small">Con <b>${esc(nombreDe(t.manager_email))}</b>${t.manager_comentario?"":` desde ${fFechaHora(t.created_at)}`}</div>${t.manager_comentario && staff()?`<div class="desc" style="margin-top:8px">${esc(t.manager_comentario)}</div>`:""}</div>`;
   } else if(["Aprobado","Rechazado"].includes(t.manager_estado)){
     revision = `<div class="box ${t.manager_estado==="Aprobado"?"ok":"no"}"><h3>Manager: ${esc(t.manager_estado.toLowerCase())}</h3>
       <div class="small">Por <b>${esc(nombreDe(t.manager_resuelto_por))}</b> el ${fFechaHora(t.manager_resuelto_at)}${t.manager_estado==="Aprobado"?(t.requiere_aprobacion?` · envió a ${esc(aprobTitulo())}`:" · directo al encargado"):""}</div>
@@ -1896,8 +1914,10 @@ async function abrirDetalle(id){
     try{ await conBoton(ev.currentTarget, () => API.cancelar(id, m)); toast(`${t.codigo} cancelada`); await recargarDetalle(); }catch(e){ fallo(e); } });
   $("#a_reabrir") && ($("#a_reabrir").onclick = async () => { const m = prompt("Motivo para reabrir el ticket:"); if(!m) return;
     try{ await API.reabrir(id, m); toast("Ticket reabierto"); await recargarDetalle(); }catch(e){ fallo(e); } });
-  $("#a_aprob") && ($("#a_aprob").onclick = async ev => { const nota = prompt(`Nota para ${ap.nombre || "el aprobador"} (opcional):`, ""); if(nota===null) return;
-    try{ await conBoton(ev.currentTarget, () => API.solicitarAprob(id, nota)); toast(`Enviado a ${ap.titulo}`); await recargarDetalle(); }catch(e){ fallo(e); } });
+  $("#a_devolver") && ($("#a_devolver").onclick = async ev => {
+    const m = prompt(`¿Devolver ${t.codigo} al manager? Sale de tu cola y vuelve a revisión.\nMotivo (obligatorio), por ejemplo: "Requiere ${aprobTitulo()}":`, ""); if(m===null) return;
+    if(!m.trim()) return toast("Indica el motivo de la devolución", true);
+    try{ await conBoton(ev.currentTarget, () => API.devolver(id, m)); toast(`${t.codigo} devuelta al manager`); await recargarDetalle(); }catch(e){ fallo(e); } });
   const decidir = async dec => { const com = $("#ap_com").value.trim();
     if(dec==="Rechazado" && !com) return toast("Escribe el motivo del rechazo", true);
     if(!confirm(`¿Confirmas que ${dec==="Aprobado"?"apruebas":"rechazas"} ${t.codigo}?`)) return;
