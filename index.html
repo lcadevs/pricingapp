@@ -97,6 +97,8 @@ h1{font-size:20px;margin:0 0 4px} h2{font-size:15.5px;margin:0 0 10px} h3{font-s
 .card.flat{box-shadow:none}
 .grid{display:grid;gap:14px}
 .kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.nota{border-left:3px solid var(--green-100);padding:6px 10px;margin:8px 0;background:var(--surface-2);border-radius:0 8px 8px 0}
+.nota .who{font-size:12px;color:var(--ink-3)}.nota .txt{white-space:pre-wrap;margin-top:2px}.nota textarea{width:100%}
 .eta-in{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-3);margin-left:4px}
 .eta-in input[type=date]{padding:3px 8px;font-size:12px;height:28px;min-height:0;width:auto;border-radius:6px}
 .eta-in.falta{color:var(--brick);font-weight:700}.eta-in.falta input{border-color:var(--brick)}
@@ -278,10 +280,19 @@ let TIPOS = [   // se reemplaza por los tipos de Configuración → Formulario
   "Autorización para aplicar descuentos de política o adicionales",
   "Otros"
 ];
-const ABIERTOS_EDIT = ["En cola","En análisis","En espera de información"];   // estados de la cola del encargado
+// Estados de la cola del encargado: fijos (En cola, En análisis, En espera de información) + los que configure el equipo
 const CERRADOS = ["Completado","Rechazado","Cancelado"];
-const ESTADOS = ["Revisión manager", "Pendiente aprobación", ...ABIERTOS_EDIT, ...CERRADOS];
-const enCola = t => !esCerrado(t) && ABIERTOS_EDIT.includes(t.estado);
+const ESTADOS_FIJOS_TRABAJO = ["En cola","En análisis"];
+let ABIERTOS_EDIT = [...ESTADOS_FIJOS_TRABAJO, "En espera de información"];
+let ESTADOS = ["Revisión manager", "Pendiente aprobación", ...ABIERTOS_EDIT, ...CERRADOS];
+const estadosTrabajo = () => [...ESTADOS_FIJOS_TRABAJO, ...((S.cfg?.estados?.lista)||[]).filter(x => !ESTADOS_FIJOS_TRABAJO.includes(x))];
+function aplicarEstados(){
+  const extra = estadosTrabajo().slice(ESTADOS_FIJOS_TRABAJO.length);
+  ABIERTOS_EDIT = [...ESTADOS_FIJOS_TRABAJO, ...extra, "En espera de información"];
+  ESTADOS = ["Revisión manager", "Pendiente aprobación", ...ABIERTOS_EDIT, ...CERRADOS];
+}
+const esEstadoCola = e => !!e && !["Revisión manager","Pendiente aprobación", ...CERRADOS].includes(e);
+const enCola = t => !esCerrado(t) && esEstadoCola(t.estado);
 const PRIORIDADES = ["Baja","Media","Alta","Urgente"];
 const MONEDAS = ["USD","CRC","MXN","EUR"];
 const ROLES = {solicitante:"Solicitante", encargado:"Encargado Pricing", manager:"Manager Pricing", aprobador:"Aprobador", admin:"Administrador"};
@@ -295,7 +306,7 @@ const EVENTOS = {
   manager:"Al solicitante: decisión del manager", aprobacion:"Al aprobador (CEO): solicitud de aprobación",
   decision:"Al solicitante y al manager: decisión del CEO", nuevo:"Al encargado: solicitud asignada a su cola",
   info:"Al solicitante: Pricing necesita información", comentario:"Comentario nuevo (a la otra parte)",
-  eta:"Al solicitante: Pricing define o cambia la fecha estimada", devuelto:"Al manager: el encargado le devuelve una solicitud", estado:"Al solicitante: su solicitud cambia de estado", cierre:"Al solicitante: ticket cerrado", cancelado:"A quien la tenía: el solicitante la canceló", cierre_manager:"Al manager: ticket cerrado", acceso:"Al administrador: alguien solicita acceso",
+  eta:"Al solicitante: Pricing define o cambia la fecha estimada", reenviado:"Al encargado: el solicitante respondió y reenvió", devuelto:"Al manager: el encargado le devuelve una solicitud", estado:"Al solicitante: su solicitud cambia de estado", cierre:"Al solicitante: ticket cerrado", cancelado:"A quien la tenía: el solicitante la canceló", cierre_manager:"Al manager: ticket cerrado", acceso:"Al administrador: alguien solicita acceso",
   bienvenida:"Al usuario nuevo: ya tiene acceso", codigo:"Código de ingreso (no se guarda copia)", prueba:"Correo de prueba"
 };
 const VARIABLES = ["codigo","titulo","tipo","cliente","prioridad","estado","estado_anterior","descripcion","solicitante","encargado","vencimiento","eta",
@@ -303,6 +314,7 @@ const VARIABLES = ["codigo","titulo","tipo","cliente","prioridad","estado","esta
 const TIPOS_CAMPO = {texto:"Texto corto", parrafo:"Párrafo", numero:"Número", fecha:"Fecha", lista:"Lista de opciones", si_no:"Sí / No"};
 const CFG_DEFAULT = {
   formulario:{tipos:TIPOS.map(n => ({nombre:n, activo:true, campos:[]}))},
+  estados:{lista:[]},
   aprobacion:{titulo:"Aprobación CEO", nombre:"", cargo:"CEO", email:""},
   revision:{default_email:"", por_tipo:{}},     // manager que revisa
   asignacion:{default_email:"", por_tipo:{}},   // encargado que atiende
@@ -322,10 +334,11 @@ const CFG_DEFAULT = {
     comentario:{asunto:"Nuevo comentario en {codigo}", cuerpo:"{autor} comentó en {codigo} · {titulo}:\n\n{comentario}\n\n{link}"},
     estado:{asunto:"Tu solicitud {codigo} ahora está: {estado}", cuerpo:"Hola {solicitante},\n\nTu solicitud {codigo} · {titulo} cambió de estado:\n{estado_anterior} → {estado}\n\nFecha estimada: {eta}\nAtendida por: {encargado}\n\nPuedes ver su avance aquí:\n{link}"},
     devuelto:{asunto:"Solicitud devuelta para tu revisión · {codigo}", cuerpo:"Hola {manager},\n\n{autor} devolvió la solicitud {codigo} · {titulo} de {solicitante} para que la revises de nuevo.\n\nMotivo: {comentario}\n\nSi necesita {aprobacion}, márcalo al aprobarla.\n\n{link}"},
+    reenviado:{asunto:"{solicitante} respondió · {codigo}", cuerpo:"Hola {encargado},\n\n{solicitante} respondió a la información que pediste en {codigo} · {titulo}:\n\n{comentario}\n\nLa solicitud volvió a tu cola (estado: {estado}) sin pasar de nuevo por revisión.\n\n{link}"},
     eta:{asunto:"Fecha estimada para tu solicitud {codigo}", cuerpo:"Hola {solicitante},\n\nEl equipo de Pricing estima que tu solicitud {codigo} · {titulo} estará lista el {eta}.\n\nAtendida por: {encargado}\n\nPuedes ver su avance aquí:\n{link}"},
     cierre:{asunto:"Tu solicitud {codigo} fue cerrada: {resultado}", cuerpo:"Hola {solicitante},\n\nTu solicitud {codigo} · {titulo} fue cerrada como {resultado}.\n\nResolución:\n{resolucion}\n\nAtendida por: {encargado}\n\n{link}"},
     acceso:{asunto:"Solicitud de acceso a Pricing Desk: {persona}", cuerpo:"{persona} ({correo}) solicita acceso a Pricing Desk.\n\nMotivo: {comentario}\n\nApruébalo o descártalo en la pestaña Usuarios:\n{link}"},
-    bienvenida:{asunto:"Ya tienes acceso a Pricing Desk", cuerpo:"Hola {persona},\n\nYa puedes entrar a Pricing Desk con tu correo {correo}. Si tu rol lo requiere, te enviaremos un código de 6 dígitos a este correo para ingresar.\n\n{link}"},
+    bienvenida:{asunto:"Ya tienes acceso a Pricing Desk", cuerpo:"Hola {persona},\n\nYa puedes entrar a Pricing Desk con tu correo {correo}. Al ingresar te enviaremos un código de 6 dígitos a este correo (la sesión dura 30 días).\n\n{link}"},
     codigo:{asunto:"Tu código para Pricing Desk: {codigo_acceso}", cuerpo:"Hola {persona},\n\nTu código de ingreso a Pricing Desk es:\n\n{codigo_acceso}\n\nVence en 10 minutos. Si no lo pediste, ignora este correo."},
     prueba:{asunto:"Prueba de correo · Pricing Desk", cuerpo:"Este es un correo de prueba enviado desde la configuración de Pricing Desk."}
   }
@@ -453,6 +466,13 @@ const tipoTxt = t => t.tipo==="Otros" && t.tipo_otro ? `Otros · ${t.tipo_otro}`
 /* =====================================================================
    Capa de datos · Supabase
    ===================================================================== */
+// La sesión vence a los 30 días del ingreso (luego pide el correo / código otra vez)
+const SESION_KEY = "pricing_desk_ingreso", SESION_DIAS = 30;
+function marcarIngreso(){ try{ localStorage.setItem(SESION_KEY, String(Date.now())); }catch(e){} }
+function sesionVencida(){
+  try{ const v = +localStorage.getItem(SESION_KEY) || 0; if(!v){ marcarIngreso(); return false; } return Date.now() - v > SESION_DIAS * 864e5; }
+  catch(e){ return false; }
+}
 const chk = ({data, error}) => { if(error) throw error; return data; };
 const uno = d => Array.isArray(d) ? d[0] : d;
 const API_SB = {
@@ -465,7 +485,7 @@ const API_SB = {
       if(/Failed to send|FunctionsFetchError|404|not found/i.test(msg)) msg = `No se encontró la función de ingreso "${CONFIG.LOGIN_FUNCTION}". Publícala en Supabase (ver guía).`;
       throw new Error(msg);
     }
-    if(data?.session) chk(await sb.auth.setSession(data.session));
+    if(data?.session){ chk(await sb.auth.setSession(data.session)); marcarIngreso(); }
     return data;
   },
   async pinPendiente(){ return !!chk(await sb.rpc("pricing_pin_pendiente")); },
@@ -486,7 +506,7 @@ const API_SB = {
   async solicitudesAcceso(){ return chk(await sb.from("pricing_solicitudes_acceso").select("*").eq("estado","Pendiente").order("id")); },
   async resolverAcceso(id, estado){ chk(await sb.rpc("pricing_resolver_acceso",{p_id:id, p_estado:estado})); },
   async bienvenida(email){ chk(await sb.rpc("pricing_bienvenida",{p_email:email})); },
-  async salir(){ await sb.auth.signOut(); },
+  async salir(){ try{ localStorage.removeItem(SESION_KEY); }catch(e){} await sb.auth.signOut(); },
   async me(uid){ return chk(await sb.from("pricing_usuarios").select("*").eq("id", uid).maybeSingle()); },
   async usuarios(){ return chk(await sb.from("pricing_usuarios").select("*").order("nombre")); },
   async config(){ const rows = chk(await sb.from("pricing_config").select("clave, valor")); const o = {}; rows.forEach(r => o[r.clave] = r.valor); return o; },
@@ -499,6 +519,11 @@ const API_SB = {
   async correosLog(){ return chk(await sb.from("pricing_notificaciones").select("id,evento,para_email,asunto,correo,error_envio,created_at").order("id",{ascending:false}).limit(25)); },
   async crear(t){ return chk(await sb.from("pricing_tickets").insert(t).select().single()); },
   async actualizar(id, c){ return chk(await sb.from("pricing_tickets").update(c).eq("id", id).select().single()); },
+  async notas(id){ return chk(await sb.from("pricing_notas").select("*").eq("ticket_id", id).order("created_at")); },
+  async agregarNota(id, texto){ return chk(await sb.from("pricing_notas").insert({ticket_id:id, texto}).select().single()); },
+  async editarNota(nid, texto){ return chk(await sb.from("pricing_notas").update({texto}).eq("id", nid).select().single()); },
+  async pedirInfo(id, motivo){ return uno(chk(await sb.rpc("pricing_pedir_info",{p_ticket:id, p_motivo:motivo}))); },
+  async reenviar(id, resp){ return uno(chk(await sb.rpc("pricing_reenviar",{p_ticket:id, p_respuesta:resp}))); },
   async cancelar(id, motivo){ return uno(chk(await sb.rpc("pricing_cancelar",{p_ticket:id, p_motivo:motivo||null}))); },
   async revisar(id, dec, ceo, com){ return uno(chk(await sb.rpc("pricing_revisar",{p_ticket:id, p_decision:dec, p_requiere_ceo:!!ceo, p_comentario:com||null}))); },
   async solicitarAprob(id, nota){ return uno(chk(await sb.rpc("pricing_solicitar_aprobacion",{p_ticket:id, p_nota:nota||null}))); },
@@ -631,7 +656,7 @@ const Demo = {
       asunto:renderTpl(pl.asunto,v), cuerpo_texto:renderTpl(pl.cuerpo,v), leida:false, correo:this.db.cfg.flow_url?"Enviado (demo)":"Sin flujo", created_at:this.ahora()});
   },
   t(id){ return this.db.tickets.find(x => x.id===id); },
-  sigOrden(){ return Math.max(0, ...this.db.tickets.filter(x => !x.cerrado_at && ABIERTOS_EDIT.includes(x.estado)).map(x => x.orden||0)) + 1; }
+  sigOrden(){ return Math.max(0, ...this.db.tickets.filter(x => !x.cerrado_at && esEstadoCola(x.estado)).map(x => x.orden||0)) + 1; }
 };
 const clon = o => JSON.parse(JSON.stringify(o));
 const API_DEMO = {
@@ -646,7 +671,7 @@ const API_DEMO = {
     const estado = await this.estadoAcceso(email); if(estado!=="ok") return {estado};
     const u = Demo.db.usuarios.find(x => x.email===lower(email)), pin = extra.pin, codigo = extra.codigo;
     let cambiar_pin = false;
-    if(u.rol!=="solicitante"){
+    {   // todos los roles ingresan con código (versión 11)
       if(pin){
         if(u.rol!=="admin") return {estado:"codigo", error:"Ingresa con el código que te enviamos al correo."};
         Demo.db.pins = Demo.db.pins || {}; const k = Demo.db.pins[u.id] = Demo.db.pins[u.id] || {pin:"00000", cambiar:true, intentos:0, hasta:0};
@@ -699,7 +724,7 @@ const API_DEMO = {
   async guardarConfig(clave, valor){ Demo.db.cfg[clave] = clon(valor); Demo.save(); },
   async tickets(){ const st = ["encargado","manager","admin"].includes(S.me.rol);
     return clon(Demo.db.tickets.filter(t => st || t.solicitante_id===S.me.id || lower(t.asignado_email)===S.me.email || lower(t.aprob_email)===S.me.email)).sort((a,b)=>b.id-a.id); },
-  async miCola(){ const c = Demo.db.tickets.filter(t => !t.cerrado_at && ABIERTOS_EDIT.includes(t.estado)).sort((a,b)=>(a.orden??1e9)-(b.orden??1e9)||a.id-b.id);
+  async miCola(){ const c = Demo.db.tickets.filter(t => !t.cerrado_at && esEstadoCola(t.estado)).sort((a,b)=>(a.orden??1e9)-(b.orden??1e9)||a.id-b.id);
     return c.map((t,i) => ({ticket_id:t.id, posicion:i+1, total:c.length, adelante:i, sid:t.solicitante_id})).filter(x => x.sid===S.me.id); },
   async horas(){ return staff() ? clon(Demo.db.horas) : []; },
   async notifs(){ return clon(Demo.db.notifs.filter(n => n.para_email===S.me.email).slice(0,40)); },
@@ -724,6 +749,25 @@ const API_DEMO = {
     if(row.manager_email) Demo.notificar(row, "revision", row.manager_email); else Demo.notificar(row, "nuevo", row.asignado_email);
     Demo.save(); return clon(row);
   },
+  async notas(id){ return clon((Demo.db.notas||[]).filter(n => n.ticket_id===id).sort((a,b) => a.created_at.localeCompare(b.created_at))); },
+  async agregarNota(id, texto){ texto = (texto||"").trim(); if(!texto) throw new Error("Escribe la nota");
+    const l = (Demo.db.notas ||= []); Demo.db.seq.nt = (Demo.db.seq.nt||0) + 1;
+    const n = {id:Demo.db.seq.nt, ticket_id:id, autor_email:S.me.email, texto, created_at:Demo.ahora(), editado_at:null, editado_por:null}; l.push(n); Demo.save(); return clon(n); },
+  async editarNota(nid, texto){ texto = (texto||"").trim(); if(!texto) throw new Error("La nota no puede quedar vacía");
+    const n = (Demo.db.notas||[]).find(x => x.id===nid); if(!n || n.autor_email!==S.me.email) throw new Error("Solo quien escribió la nota puede editarla");
+    if(n.texto!==texto) Object.assign(n, {texto, editado_at:Demo.ahora(), editado_por:S.me.email}); Demo.save(); return clon(n); },
+  async pedirInfo(id, motivo){ const t = Demo.t(id); motivo = (motivo||"").trim();
+    if(!enCola(t)) throw new Error("La solicitud no está en la cola de Pricing");
+    if(t.estado==="En espera de información") throw new Error("Ya se le pidió información al solicitante");
+    if(!motivo) throw new Error("Indica qué información necesitas");
+    const prev = t.estado; Demo.cambio(t, {estado:"En espera de información"}); Object.assign(t, {estado_previo:prev, info_pedida:motivo});
+    Demo.log(id, "Información solicitada", null, null, null, motivo); Demo.notificar(t, "info", t.solicitante_email, {comentario:motivo}); Demo.save(); return clon(t); },
+  async reenviar(id, resp){ const t = Demo.t(id); resp = (resp||"").trim();
+    if(t.estado!=="En espera de información") throw new Error("La solicitud no está esperando información");
+    if(!resp) throw new Error("Escribe tu respuesta para Pricing");
+    const dest = esEstadoCola(t.estado_previo) && t.estado_previo!=="En espera de información" ? t.estado_previo : "En cola";
+    Demo.cambio(t, {estado:dest}); Object.assign(t, {estado_previo:null, info_pedida:null}); if(t.orden==null) t.orden = Demo.sigOrden();
+    Demo.log(id, "Respuesta del solicitante", null, null, null, resp); Demo.notificar(t, "reenviado", t.asignado_email, {comentario:resp}); Demo.save(); return clon(t); },
   async cancelar(id, motivo){
     const t = Demo.t(id), antes = clon(t), mot = (motivo||"").trim() || null;
     if(t.cerrado_at) throw new Error("La solicitud ya está cerrada");
@@ -733,7 +777,7 @@ const API_DEMO = {
     const ex = {comentario:mot||"—"};
     if(antes.manager_estado==="Pendiente") Demo.notificar(t, "cancelado", antes.manager_email, ex);
     if(antes.aprob_estado==="Pendiente") Demo.notificar(t, "cancelado", antes.aprob_email, ex);
-    if(ABIERTOS_EDIT.includes(antes.estado)) Demo.notificar(t, "cancelado", antes.asignado_email, ex);
+    if(esEstadoCola(antes.estado)) Demo.notificar(t, "cancelado", antes.asignado_email, ex);
     Demo.save(); return clon(t);
   },
   async revisar(id, dec, ceo, com){
@@ -764,7 +808,7 @@ const API_DEMO = {
   },
   async devolver(id, motivo){
     const t = Demo.t(id), cfg = Demo.db.cfg; motivo = (motivo||"").trim();
-    if(!ABIERTOS_EDIT.includes(t.estado) || t.cerrado_at) throw new Error("Solo se devuelven solicitudes que están en la cola de Pricing");
+    if(!esEstadoCola(t.estado) || t.cerrado_at) throw new Error("Solo se devuelven solicitudes que están en la cola de Pricing");
     if(!motivo) throw new Error("Indica el motivo de la devolución");
     const mgr = t.manager_email || lower(((cfg.revision||{}).por_tipo||{})[t.tipo] || (cfg.revision||{}).default_email) || null;
     if(!mgr) throw new Error("No hay un manager de revisión configurado para este tipo de solicitud");
@@ -815,7 +859,7 @@ const API_DEMO = {
     Demo.cambio(t, {estado:"En análisis"}); Object.assign(t, {cerrado_at:null, cerrado_por:null, orden:min-1});
     Demo.log(id, "Reapertura", null, null, null, motivo); Demo.save(); return clon(t);
   },
-  async reordenar(ids){ ids.forEach((id,i) => { const t = Demo.t(id); if(t && !t.cerrado_at && ABIERTOS_EDIT.includes(t.estado)) t.orden = i+1; }); Demo.save(); },
+  async reordenar(ids){ ids.forEach((id,i) => { const t = Demo.t(id); if(t && !t.cerrado_at && esEstadoCola(t.estado)) t.orden = i+1; }); Demo.save(); },
   async pruebaCorreo(){ Demo.notificar(null, "prueba", S.me.email); Demo.save(); },
   async bitacora(id){ return clon(Demo.db.bitacora.filter(b => b.ticket_id===id)); },
   async nota(id, accion, comentario, valor){
@@ -848,10 +892,11 @@ async function iniciar(){
   try{
     S.user = await API.sesion();
     if(!S.user) return pintarLogin();
+    if(!DEMO && sesionVencida()){ await API.salir(); S.user = null; pintarLogin(); return toast("Tu sesión venció (dura 30 días). Ingresa de nuevo."); }
     S.me = await API.me(S.user.id);
     if(!S.me || !S.me.activo) return pintarSinAcceso();
     S.me.email = lower(S.me.email);
-    if(S.me.rol!=="solicitante" && await API.pinPendiente()) return pintarCambioPin(true);
+    if(await API.pinPendiente()) return pintarCambioPin(true);
     await recargar();
     S.tab = tabsRol()[0][0];
     if(misAprobaciones().length && tabsRol().some(x=>x[0]==="aprobaciones")) S.tab = "aprobaciones";
@@ -873,6 +918,7 @@ async function recargar(){
   S.cfg.plantillas = {...CFG_DEFAULT.plantillas, ...(cfg.plantillas||{})};
   if(!S.cfg.formulario || !Array.isArray(S.cfg.formulario.tipos) || !S.cfg.formulario.tipos.length) S.cfg.formulario = structuredClone(CFG_DEFAULT.formulario);
   TIPOS = S.cfg.formulario.tipos.map(x => x.nombre);
+  aplicarEstados();
   const [t, cola, n, h] = await Promise.all([API.tickets(), API.miCola(), API.notifs(), API.horas()]);
   S.tickets = t || []; S.tickets.forEach(x => { if(x.tipo && !TIPOS.includes(x.tipo)) TIPOS.push(x.tipo); }); S.cola = cola || []; S.notifs = n || []; S.horas = h || [];
 }
@@ -881,7 +927,9 @@ if(!DEMO){
 }
 // Actualización automática cada minuto (si no hay un formulario abierto)
 setInterval(async () => {
-  if(!S.me || document.hidden || $("#modal-root").innerHTML || $("#np-root").innerHTML) return;
+  if(!S.me || document.hidden) return;
+  if(!DEMO && sesionVencida()){ await API.salir(); location.reload(); return; }
+  if($("#modal-root").innerHTML || $("#np-root").innerHTML) return;
   try{ await recargar(); pintarApp(true); }catch(e){}
 }, 60000);
 
@@ -1050,8 +1098,8 @@ function tabsRol(){
   switch(rol()){
     case "solicitante": return conAprob([T.mis]);
     case "aprobador":   return [T.aprob, T.mis];
-    case "encargado":   return conAprob([T.inicio, T.tickets, T.mis]);
-    case "manager":     return conAprob([T.rev, T.analitica, T.inicio, T.tickets, T.horas, T.mis]);
+    case "encargado":   return conAprob([T.inicio, T.tickets, T.mis, T.config]);
+    case "manager":     return conAprob([T.rev, T.analitica, T.inicio, T.tickets, T.horas, T.mis, T.config]);
     default:            return [T.inicio, T.rev, T.tickets, T.analitica, T.horas, T.aprob, T.mis, T.usuarios, T.config];
   }
 }
@@ -1145,7 +1193,7 @@ function vMis(){
     else if(c) pos = `<div class="posbox"><div class="big">#${c.posicion}</div><div class="of">en la cola de ${c.total}</div></div>`;
     else pos = `<div class="posbox"><div class="big">—</div><div class="of">Calculando posición</div></div>`;
     let msg = "";
-    if(t.estado==="En espera de información") msg = `<div class="banner" style="margin:0 0 8px">El equipo de Pricing necesita información. Abre el ticket y responde en los comentarios.</div>`;
+    if(t.estado==="En espera de información") msg = `<div class="banner" style="margin:0 0 8px"><b>Pricing necesita:</b> ${esc(t.info_pedida || "información adicional")}<div class="small" style="margin-top:4px">Abre la solicitud, responde y presiona <b>Reenviar a Pricing</b>: vuelve directo a la cola, sin pasar de nuevo por aprobación.</div></div>`;
     else if(t.estado==="Revisión manager") msg = `<div class="small" style="margin-bottom:6px">El manager revisa tu solicitud. Cuando la apruebe pasa a la cola de Pricing${S.cfg.aprobacion.email?` o, si lo requiere, a ${esc(aprobTitulo())}`:""}.</div>`;
     else if(t.estado==="Pendiente aprobación") msg = `<div class="small" style="margin-bottom:6px">Tu solicitud está en <b>${esc(aprobTitulo())}</b>. Al aprobarse pasa a la cola de Pricing.</div>`;
     else if(c) msg = `<div class="b" style="margin-bottom:2px">${c.adelante===0 ? (t.estado==="En análisis" ? "¡Tu solicitud se está atendiendo!" : "¡Tu solicitud es la siguiente!") : `Hay ${c.adelante} solicitud${c.adelante>1?"es":""} antes de la tuya`}</div>${pista(c)}`;
@@ -1154,7 +1202,7 @@ function vMis(){
         <div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span>${tagEstado(t.estado)}${tagAprob(t)}${tagPrueba(t)}</div>
         <div class="b" style="margin-top:4px">${esc(t.titulo)}</div>
         <div class="sub">${esc(tipoTxt(t))} · enviada ${hace(t.created_at)}${t.fecha_eta?` · fecha estimada <b>${fFecha(t.fecha_eta)}</b>`:(enCola(t)?" · Pricing aún no define la fecha estimada":"")}</div></div>
-        <div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn sm ghost" data-cancel="${t.id}" style="color:var(--brick)">Cancelar</button><span class="btn sm">Ver detalle</span></div></div>
+        <div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn sm ghost" data-cancel="${t.id}" style="color:var(--brick)">Cancelar</button><span class="btn sm ${t.estado==="En espera de información"?"pri":""}">${t.estado==="En espera de información"?"Responder":"Ver detalle"}</span></div></div>
       <div class="body">${pos}<div>${msg}${pasos(t)}</div></div></div>`;
   };
   $("#main").innerHTML = `
@@ -1290,7 +1338,7 @@ function vTickets(){
   $("#main").innerHTML = `
     <div class="page-h"><div class="grow"><h1>Tickets</h1><p class="muted small">Solicitudes especiales (no SPA, SPE ni SDE).</p></div>
       <div class="seg" id="seg">${[["abiertos",`Abiertos (${nA})`],["cerrados",`Cerrados (${nC})`],["todos","Todos"]].map(([k,l]) => `<button data-v="${k}" class="${vistaBase===k && ["abiertos","cerrados","todos"].includes(f.vista)?"on":""}">${l}</button>`).join("")}</div>
-      <button class="btn sm" id="csv">Exportar CSV</button><button class="btn sm" id="recargar">Actualizar</button></div>
+      <button class="btn sm" id="csv">Exportar a Excel</button><button class="btn sm" id="recargar">Actualizar</button></div>
     <div class="filters">
       <input type="search" id="fq" placeholder="Buscar código, título, cliente…" value="${esc(f.q)}">
       <select id="fest"><option value="${vistaBase}">Cualquier estado</option>${ESTADOS.map(x=>`<option ${f.vista===x?"selected":""}>${x}</option>`).join("")}</select>
@@ -1313,7 +1361,7 @@ function vTickets(){
   $$("#seg button").forEach(b => b.onclick = () => { S.f.vista = b.dataset.v; vTickets(); });
   $("#limpiar").onclick = () => { S.f = {vista:vistaBase, q:"", tipo:"", prioridad:"", asignado:"", solicitante:"", desde:"", hasta:"", alerta:""}; vTickets(); };
   $("#recargar").onclick = refrescar;
-  $("#csv").onclick = () => exportarCSV(filtrar().map(filaReporte), `tickets_pricing_${hoy()}.csv`);
+  $("#csv").onclick = async ev => { try{ await conBoton(ev.currentTarget, () => exportarExcel(filtrar().map(filaReporte), `tickets_pricing_${hoy()}.xlsx`, "Tickets")); }catch(e){ fallo(e); } };
   pintar();
 }
 function filaReporte(t){
@@ -1326,10 +1374,38 @@ function filaReporte(t){
     prioridad:t.prioridad, estado:t.estado, estado_general:cerr?"Cerrado":"Abierto",
     solicitante_email:t.solicitante_email||"", asignado_email:t.asignado_email||"", cerrado_por:t.cerrado_por||"",
     fecha_solicitud:dia(t.created_at), fecha_eta:t.fecha_eta||"", fecha_vencimiento:t.fecha_vencimiento||"", fecha_cierre:cerr?dia(t.cerrado_at):"",
-    dias_abierto:diasEntre(t.created_at, cerr?t.cerrado_at:h), estado_sla:sla, horas_ejecucion:t.horas_ejecucion??"",
+    dias_abierto:diasEntre(t.created_at, cerr?t.cerrado_at:h), estado_sla:sla, horas_ejecucion:t.horas_ejecucion==null?"":Number(t.horas_ejecucion),
+    manager_email:t.manager_email||"", manager_estado:t.manager_estado||"",
     requiere_aprobacion:t.requiere_aprobacion?"Sí":"No", aprob_estado:t.aprob_estado, aprob_email:t.aprob_email||"",
     dias_atraso: diasAtraso(t),
     campos_formulario: camposDe(t.tipo).filter(c => (t.datos||{})[c.id]).map(c => `${c.etiqueta}: ${t.datos[c.id]}`).join(" | ")};
+}
+// Exportar a Excel (.xlsx) con SheetJS, que se carga solo cuando se usa
+let _xlsx = null;
+function cargarXLSX(){
+  if(window.XLSX) return Promise.resolve(window.XLSX);
+  return _xlsx ||= new Promise((ok, no) => { const sc = document.createElement("script");
+    sc.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    sc.onload = () => ok(window.XLSX); sc.onerror = () => { _xlsx = null; no(new Error("No se pudo cargar el exportador de Excel. Revisa tu conexión.")); };
+    document.head.appendChild(sc); });
+}
+const ETIQ_XLS = {origen:"Origen", numero:"Número", tipo_solicitud:"Tipo de solicitud", tipo_detalle:"Detalle del tipo", titulo:"Título", prioridad:"Prioridad",
+  estado:"Estado", estado_general:"Abierto / cerrado", solicitante_email:"Solicitante", asignado_email:"Encargado", cerrado_por:"Cerrado por",
+  fecha_solicitud:"Fecha de solicitud", fecha_eta:"Fecha estimada (ETA)", fecha_vencimiento:"Vencimiento (anterior)", fecha_cierre:"Fecha de cierre",
+  dias_abierto:"Días abierto", estado_sla:"Cumplimiento ETA", horas_ejecucion:"Horas de ejecución", requiere_aprobacion:"Requiere aprobación",
+  aprob_estado:"Estado de aprobación", aprob_email:"Aprobador", dias_atraso:"Días de atraso", campos_formulario:"Campos del formulario",
+  manager_email:"Manager", manager_estado:"Revisión del manager", fecha:"Fecha", registrado_por:"Registrado por", nota:"Nota", horas:"Horas", cliente:"Cliente"};
+async function exportarExcel(filas, nombre, hoja="Datos"){
+  if(!filas.length) return toast("No hay filas para exportar", true);
+  const X = await cargarXLSX();
+  const esFecha = v => typeof v==="string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  const rows = filas.map(f => { const o = {}; for(const k in f){ const v = f[k]; o[ETIQ_XLS[k]||k] = esFecha(v) ? new Date(v+"T12:00:00") : (v===""||v==null ? null : v); } return o; });
+  const ws = X.utils.json_to_sheet(rows, {cellDates:true, dateNF:"dd/mm/yyyy"});
+  const cols = Object.keys(rows[0]);
+  ws["!cols"] = cols.map(c => ({wch: Math.min(60, Math.max(c.length, ...rows.slice(0,200).map(r => { const v = r[c]; return v instanceof Date ? 10 : String(v??"").length; })) + 2)}));
+  ws["!autofilter"] = {ref: X.utils.encode_range({s:{r:0,c:0}, e:{r:rows.length, c:cols.length-1}})};
+  const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, hoja.slice(0,31));
+  X.writeFile(wb, nombre);
 }
 function exportarCSV(filas, nombre){
   if(!filas.length) return toast("No hay filas para exportar", true);
@@ -1441,7 +1517,7 @@ function vHoras(){
     <div class="page-h"><div class="grow"><h1>Registro de horas</h1><p class="muted small">Tiempo de ejecución que registra Pricing al cerrar cada ticket.</p></div>
       <select id="hq" style="width:auto"><option value="">Todo el equipo</option>${quienes.map(q=>`<option value="${esc(q)}" ${S.hr.quien===q?"selected":""}>${esc(nombreDe(q))}</option>`).join("")}</select>
       <div class="seg" id="hrg">${[["1","Este mes"],["3","3 meses"],["6","6 meses"],["12","12 meses"]].map(([k,l]) => `<button data-r="${k}" class="${S.hr.rango===k?"on":""}">${l}</button>`).join("")}</div>
-      <button class="btn sm" id="hcsv">Exportar CSV</button></div>
+      <button class="btn sm" id="hcsv">Exportar a Excel</button></div>
     <div class="grid kpis">
       <div class="kpi k-green"><div class="v num">${fNum(total,1)}</div><div class="l">Horas en el período</div></div>
       <div class="kpi k-slate"><div class="v num">${nT}</div><div class="l">Tickets con horas</div></div>
@@ -1461,7 +1537,7 @@ function vHoras(){
   $$("#hrg button").forEach(b => b.onclick = () => { S.hr.rango = b.dataset.r; vHoras(); });
   $("#hq").onchange = e => { S.hr.quien = e.target.value; vHoras(); };
   $$("[data-open]").forEach(el => el.onclick = () => abrirDetalle(+el.dataset.open));
-  $("#hcsv").onclick = () => exportarCSV(hr.map(x => { const t = tk.get(x.ticket_id); return {fecha:dia(x.fecha), numero:t?.codigo||"", tipo_solicitud:t?.tipo||"", titulo:t?.titulo||"", cliente:t?.cliente||"", registrado_por:x.usuario_email, nota:x.nota||"", horas:x.horas}; }), `horas_pricing_${hoy()}.csv`);
+  $("#hcsv").onclick = async ev => { try{ await conBoton(ev.currentTarget, () => exportarExcel(hr.map(x => { const t = tk.get(x.ticket_id); return {fecha:dia(x.fecha), numero:t?.codigo||"", tipo_solicitud:t?.tipo||"", titulo:t?.titulo||"", registrado_por:x.usuario_email, nota:x.nota||"", horas:Number(x.horas)}; }), `horas_pricing_${hoy()}.xlsx`, "Horas")); }catch(e){ fallo(e); } };
 }
 
 /* =====================================================================
@@ -1534,7 +1610,7 @@ async function vUsuarios(){
   const optRol = sel => Object.entries(ROLES).map(([k,l])=>`<option value="${k}" ${sel===k?"selected":""}>${l}</option>`).join("");
   const doms = S.cfg.dominios || CFG_DEFAULT.dominios;
   $("#main").innerHTML = `
-    <div class="page-h"><div class="grow"><h1>Usuarios</h1><p class="muted small">Los solicitantes entran solo con su correo; los demás roles reciben un código de 6 dígitos en su correo (por el flujo de Power Automate). El administrador también puede entrar con su PIN. Si el flujo no está configurado, los roles superiores usan PIN (inicial 00000). Un usuario desactivado no puede entrar.</p></div></div>
+    <div class="page-h"><div class="grow"><h1>Usuarios</h1><p class="muted small">Todos los usuarios entran con su correo y un código de 6 dígitos que les llega por el flujo de Power Automate; la sesión dura 30 días. El administrador también puede entrar con su PIN. Si el flujo no está configurado, todos usan PIN (inicial 00000, se cambia al primer ingreso). Un usuario desactivado no puede entrar.</p></div></div>
     <div id="solic"></div>
     <div class="card" style="margin-bottom:16px">
       <h2>Agregar usuario</h2>
@@ -1553,7 +1629,7 @@ async function vUsuarios(){
       <td>${u.activo?`<span class="tag t-green">Activo</span>`:`<span class="tag t-gray">Inactivo</span>`}</td>
       <td><div class="actions" style="flex-wrap:nowrap"><button class="btn sm usave">Guardar</button>
         <button class="btn sm uact">${u.activo?"Desactivar":"Activar"}</button>
-        ${u.rol==="admin" || (u.rol!=="solicitante" && !S.cfg.flow_url) ? `<button class="btn sm ghost upin" title="Vuelve el PIN a 00000">Restablecer PIN</button>` : ""}</div></td></tr>`).join("")}</tbody></table></div>`;
+        ${u.rol==="admin" || !S.cfg.flow_url ? `<button class="btn sm ghost upin" title="Vuelve el PIN a 00000">Restablecer PIN</button>` : ""}</div></td></tr>`).join("")}</tbody></table></div>`;
   const dominioOk = e => doms.includes(lower(e).split("@")[1]);
   $("#fu").onsubmit = async e => { e.preventDefault();
     const nombre = $("#un").value.trim(), email = lower($("#ue").value), rolSel = $("#ur").value;
@@ -1639,89 +1715,43 @@ document.addEventListener("click", async ev => {
   }
 });
 
-async function vConfig(){
-  const c = S.cfg, ap = c.aprobacion, as = c.asignacion, rv = c.revision || {default_email:"", por_tipo:{}}, app = c.app;
-  const act = S.usuarios.filter(u => u.activo);
-  const atienden = act.filter(u => ["encargado","manager","admin"].includes(u.rol));
-  const revisores = act.filter(u => ["manager","admin"].includes(u.rol));
-  const optU = (lista, sel, vacio) => `<option value="">${vacio}</option>` + lista.map(u => `<option value="${esc(lower(u.email))}" ${lower(sel)===lower(u.email)?"selected":""}>${esc(u.nombre||u.email)} · ${ROLES[u.rol]}</option>`).join("");
-  const aprobUser = act.find(u => lower(u.email)===lower(ap.email));
-  $("#main").innerHTML = `
-    <div class="page-h"><div class="grow"><h1>Configuración</h1><p class="muted small">Estos cambios aplican de inmediato para todos.</p></div></div>
-    ${cardPrueba()}
-    <div class="card" style="margin-bottom:16px" id="alm"><div class="row" style="gap:16px;flex-wrap:wrap;align-items:center">
-      <div class="grow" style="min-width:260px"><h2 style="margin:0 0 4px">Almacenamiento</h2>
-        <div class="small muted">Cuánto ocupa la app en Supabase. Los avisos de más de 6 meses y los códigos vencidos se borran solos.</div></div>
-      <button class="btn" data-alm="ver">Ver uso</button></div><div id="alm_res"></div></div>
-    <div class="grid halves">
-      <div class="card"><h2>Aprobación</h2>
-        <div class="form">
-          <label class="f full">Nombre de la aprobación (se ve en la app y en los correos)<input type="text" id="c_at" value="${esc(ap.titulo)}" placeholder="Aprobación CEO"></label>
-          <label class="f">Nombre del aprobador<input type="text" id="c_an" value="${esc(ap.nombre)}"></label>
-          <label class="f">Cargo<input type="text" id="c_ac" value="${esc(ap.cargo)}" placeholder="CEO"></label>
-          <label class="f full">Usuario aprobador<select id="c_ae">${optU(act, ap.email, "— Selecciona —")}</select></label>
-        </div>
-        ${ap.email && !aprobUser ? `<div class="banner err" style="margin:10px 0 0">El correo ${esc(ap.email)} no es un usuario activo; no podrá entrar a aprobar.</div>` : ""}
-        ${aprobUser && !["aprobador","admin"].includes(aprobUser.rol) ? `<div class="hint" style="margin-top:8px">Sugerencia: asigna a ${esc(aprobUser.nombre)} el rol Aprobador en Usuarios.</div>` : ""}
-        <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn pri" id="g_ap">Guardar</button></div></div>
-
-      <div class="card"><h2>Correo y enlaces</h2>
-        <div class="form">
-          <label class="f full">URL de la app (para el botón "Abrir" de los correos)
-            <div class="row" style="flex-wrap:nowrap"><input type="url" id="c_url" value="${esc(app.app_url)}" placeholder="https://lcadevs.github.io/pricing/"><button class="btn sm" id="c_url_aqui" type="button">Usar esta</button></div></label>
-          <label class="f full">URL del flujo de Power Automate (envío de correos)
-            <input type="password" id="c_flow" value="${esc(c.flow_url||"")}" placeholder="https://prod-00.westus.logic.azure.com/…" autocomplete="off"></label>
-          <label class="f full">Dominios de correo permitidos (separados por coma)<input type="text" id="c_dom" value="${esc((c.dominios||[]).join(", "))}"></label>
-          <label class="f">Días antes de la fecha estimada para "por vencer"<input type="number" id="c_d1" min="1" value="${esc(app.dias_alerta)}"></label>
-          <label class="f">Días para "aprobación demorada"<input type="number" id="c_d2" min="1" value="${esc(app.dias_aprob_demora)}"></label>
-        </div>
-        <p class="hint">Sin flujo, las notificaciones igual aparecen en la campana de cada usuario.</p>
-        <div class="row" style="justify-content:flex-end"><button class="btn" id="g_prueba">Enviarme correo de prueba</button><button class="btn pri" id="g_app">Guardar</button></div></div>
-    </div>
-
-    <div class="card" style="margin-top:14px"><h2>Flujo de asignación</h2>
-      <p class="hint" style="margin-top:-6px">Cada solicitud nueva va primero al <b>manager</b> que la revisa. Si la aprueba (y, cuando lo pida, el CEO también), pasa al <b>encargado</b> que la atiende. Si un tipo no tiene regla, se usa el predeterminado. Sin manager configurado, la solicitud va directo al encargado.</p>
-      <div class="form"><label class="f">Manager que revisa (predeterminado)<select id="c_mdef">${optU(revisores, rv.default_email, "Sin revisión del manager")}</select></label>
-        <label class="f">Encargado que atiende (predeterminado)<select id="c_def">${optU(atienden, as.default_email, "Sin asignar (lo toma el equipo)")}</select></label></div>
-      <div class="tbl-wrap" style="margin-top:12px"><table><thead><tr><th>Tipo de solicitud</th><th>Manager que revisa</th><th>Encargado que atiende</th></tr></thead>
-        <tbody>${TIPOS.map((tp,i) => `<tr><td>${esc(tp)}</td><td><select data-mtp="${i}">${optU(revisores, (rv.por_tipo||{})[tp], "Usar el predeterminado")}</select></td><td><select data-tp="${i}">${optU(atienden, (as.por_tipo||{})[tp], "Usar el predeterminado")}</select></td></tr>`).join("")}</tbody></table></div>
-      <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn pri" id="g_as">Guardar flujo</button></div></div>
-
-    <div class="card" style="margin-top:14px" id="form-card"><h2>Formulario por tipo de solicitud</h2>
-      <p class="hint" style="margin-top:-6px">Todas las solicitudes piden tipo, título, descripción, prioridad y la fecha en que se necesitan. Aquí agregas los campos propios de cada tipo; también los verán el manager y el CEO y llegan en los correos (variable <code>{detalle}</code>).</p>
+/* ---------- Configuración que también edita el equipo (manager y encargado): estados y formulario ---------- */
+const cardFormulario = () => `
+    <div class="card" style="margin-top:14px" id="form-card"><h2>Tipos de solicitud y formulario</h2>
+      <p class="hint" style="margin-top:-6px">Todas las solicitudes piden tipo, título, descripción y prioridad. Aquí agregas u ocultas tipos de solicitud y los campos propios de cada tipo; también los verán el manager y el CEO y llegan en los correos (variable <code>{detalle}</code>).</p>
       <div class="grid" style="grid-template-columns:minmax(220px,300px) minmax(0,1fr);gap:16px" id="fe"></div>
-      <div class="row" style="justify-content:flex-end;margin-top:12px"><span class="hint grow" id="fe-sucio"></span><button class="btn pri" id="g_form">Guardar formulario</button></div></div>
-
-    <div class="card" style="margin-top:14px"><h2>Plantillas de correo</h2>
-      <div class="form">
-        <label class="f full">Evento<select id="c_ev">${Object.entries(EVENTOS).map(([k,l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select></label>
-        <label class="f full">Asunto (déjalo vacío para no enviar este aviso)<input type="text" id="c_as"></label>
-        <label class="f full">Cuerpo<textarea id="c_cu" rows="9"></textarea></label>
-        <div class="full"><div class="hint" style="margin-bottom:6px">Variables disponibles (clic para insertar):</div><div class="chips">${VARIABLES.map(v => `<span class="chip" data-var="${v}">{${v}}</span>`).join("")}</div></div>
-      </div>
-      <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn ghost" id="g_tdef">Restaurar predeterminada</button><button class="btn pri" id="g_tpl">Guardar plantilla</button></div></div>
-
-    <div class="card" style="margin-top:14px;padding:0;overflow:hidden"><div style="padding:16px 16px 0" class="row"><h2 class="grow">Últimos avisos generados</h2><button class="btn sm" id="g_log">Actualizar</button></div>
-      <div id="log" style="padding:0 0 4px"><div class="empty"><span class="spin"></span></div></div></div>`;
-
-  const guardar = async (btn, clave, valor) => { try{ await conBoton(btn, () => API.guardarConfig(clave, valor)); S.cfg[clave] = valor; toast("Configuración guardada"); }catch(e){ fallo(e); } };
-  $("#g_ap").onclick = async e => { const sel = act.find(u => lower(u.email)===$("#c_ae").value);
-    const v = {titulo:$("#c_at").value.trim()||"Aprobación", nombre:$("#c_an").value.trim() || sel?.nombre || "", cargo:$("#c_ac").value.trim(), email:$("#c_ae").value};
-    await guardar(e.currentTarget, "aprobacion", v); vConfig(); };
-  $("#c_ae").onchange = () => { const sel = act.find(u => lower(u.email)===$("#c_ae").value); if(sel && !$("#c_an").value.trim()) $("#c_an").value = sel.nombre||""; };
-  $("#c_url_aqui").onclick = () => $("#c_url").value = location.origin + location.pathname;
-  $("#g_app").onclick = async e => {
-    await guardar(e.currentTarget, "app", {app_url:$("#c_url").value.trim(), dias_alerta:+$("#c_d1").value||3, dias_aprob_demora:+$("#c_d2").value||2});
-    try{ await API.guardarConfig("flow_url", $("#c_flow").value.trim()); S.cfg.flow_url = $("#c_flow").value.trim();
-      const dom = $("#c_dom").value.split(/[,;\s]+/).map(x => lower(x).replace(/^@/,"")).filter(Boolean);
-      if(!dom.length) throw new Error("Debe quedar al menos un dominio permitido");
-      await API.guardarConfig("dominios", dom); S.cfg.dominios = dom; }catch(err){ fallo(err); } };
-  $("#g_prueba").onclick = async e => { try{ await conBoton(e.currentTarget, () => API.pruebaCorreo()); toast(S.cfg.flow_url ? "Correo de prueba enviado al flujo" : "Aviso de prueba creado (sin flujo configurado)"); cargarLog(); await recargar(); }catch(err){ fallo(err); } };
-  $("#g_as").onclick = async e => { const por = {}, mpor = {};
-    $$("[data-tp]").forEach(s => { if(s.value) por[TIPOS[+s.dataset.tp]] = s.value; });
-    $$("[data-mtp]").forEach(s => { if(s.value) mpor[TIPOS[+s.dataset.mtp]] = s.value; });
-    try{ await API.guardarConfig("revision", {default_email:$("#c_mdef").value, por_tipo:mpor}); S.cfg.revision = {default_email:$("#c_mdef").value, por_tipo:mpor}; }catch(err){ return fallo(err); }
-    await guardar(e.currentTarget, "asignacion", {default_email:$("#c_def").value, por_tipo:por}); };
+      <div class="row" style="justify-content:flex-end;margin-top:12px"><span class="hint grow" id="fe-sucio"></span><button class="btn pri" id="g_form">Guardar formulario</button></div></div>`;
+const cardEstados = () => `
+    <div class="card" style="margin-top:14px" id="est-card"><h2>Estados de trabajo</h2>
+      <p class="hint" style="margin-top:-6px">Son los estados que el encargado puede elegir mientras la solicitud está en la cola de Pricing. <b>En cola</b> y <b>En análisis</b> siempre existen; <b>En espera de información</b> se usa con el botón "Pedir información al solicitante". Agrega los que necesites (por ejemplo, "Validación con Finanzas").</p>
+      <div id="est-l"></div>
+      <div class="row" style="margin-top:10px;flex-wrap:nowrap;max-width:520px"><input type="text" id="est-n" maxlength="40" placeholder="Nuevo estado"><button class="btn sm" id="est-add">Agregar</button></div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px"><span class="hint grow" id="est-sucio"></span><button class="btn pri" id="g_est">Guardar estados</button></div></div>`;
+function montarEstados(guardar){
+  const L = [...((S.cfg.estados||{}).lista || [])];
+  const enUso = e => S.tickets.filter(t => !esCerrado(t) && t.estado===e).length;
+  const pintar = () => {
+    $("#est-l").innerHTML = `<div class="chips" style="gap:8px">
+      ${ESTADOS_FIJOS_TRABAJO.map(e => `<span class="tag t-slate" title="Estado fijo">${esc(e)} · fijo</span>`).join("")}
+      ${L.map((e,i) => `<span class="tag t-gray" style="gap:6px;display:inline-flex;align-items:center">${esc(e)}
+        <a href="#" data-eu="${i}" title="Mover antes">◀</a><a href="#" data-ed="${i}" title="Mover después">▶</a><a href="#" data-ex="${i}" title="Quitar" style="color:var(--brick)">✕</a></span>`).join("")}
+      <span class="tag t-olive" title="Se usa con el botón Pedir información">En espera de información · fijo</span></div>`;
+    const sucio = () => { $("#est-sucio").textContent = "Cambios sin guardar"; };
+    $$("[data-ex]").forEach(a => a.onclick = e => { e.preventDefault(); const i = +a.dataset.ex, n = enUso(L[i]);
+      if(n) return toast(`No se puede quitar "${L[i]}": ${n} solicitud(es) abiertas están en ese estado`, true);
+      L.splice(i,1); sucio(); pintar(); });
+    $$("[data-eu]").forEach(a => a.onclick = e => { e.preventDefault(); const i = +a.dataset.eu; if(i>0){ [L[i-1],L[i]] = [L[i],L[i-1]]; sucio(); pintar(); } });
+    $$("[data-ed]").forEach(a => a.onclick = e => { e.preventDefault(); const i = +a.dataset.ed; if(i<L.length-1){ [L[i+1],L[i]] = [L[i],L[i+1]]; sucio(); pintar(); } });
+  };
+  pintar();
+  $("#est-add").onclick = () => { const n = $("#est-n").value.trim().replace(/\s+/g," "); if(!n) return;
+    const todos = [...ESTADOS_FIJOS_TRABAJO, "En espera de información", "Revisión manager", "Pendiente aprobación", ...CERRADOS, ...L];
+    if(todos.some(x => lower(x)===lower(n))) return toast("Ese estado ya existe", true);
+    L.push(n); $("#est-n").value = ""; $("#est-sucio").textContent = "Cambios sin guardar"; pintar(); };
+  $("#est-n").onkeydown = e => { if(e.key==="Enter"){ e.preventDefault(); $("#est-add").click(); } };
+  $("#g_est").onclick = async e => { await guardar(e.currentTarget, "estados", {lista:L}); aplicarEstados(); $("#est-sucio").textContent = ""; };
+}
+function montarEditorFormulario(guardar){
   // ---- Editor del formulario
   const F = structuredClone(S.cfg.formulario || CFG_DEFAULT.formulario); let sel = 0, sucio = false;
   const marcar = () => { sucio = true; $("#fe-sucio").textContent = "Cambios sin guardar"; };
@@ -1776,6 +1806,101 @@ async function vConfig(){
     await guardar(e.currentTarget, "formulario", F); TIPOS = F.tipos.map(x => x.nombre); sucio = false; $("#fe-sucio").textContent = "";
   };
 
+}
+
+function vConfigEquipo(){
+  $("#main").innerHTML = `
+    <div class="page-h"><div class="grow"><h1>Configuración</h1><p class="muted small">Como ${esc(ROLES[rol()])} puedes ajustar los tipos de solicitud, su formulario y los estados de trabajo. Aplica de inmediato para todos.</p></div></div>
+    ${cardEstados()}
+    ${cardFormulario()}`;
+  const guardar = async (btn, clave, valor) => { try{ await conBoton(btn, () => API.guardarConfig(clave, valor)); S.cfg[clave] = valor; toast("Configuración guardada"); }catch(e){ fallo(e); } };
+  montarEstados(guardar); montarEditorFormulario(guardar);
+}
+
+async function vConfig(){
+  if(rol()!=="admin") return vConfigEquipo();
+  const c = S.cfg, ap = c.aprobacion, as = c.asignacion, rv = c.revision || {default_email:"", por_tipo:{}}, app = c.app;
+  const act = S.usuarios.filter(u => u.activo);
+  const atienden = act.filter(u => ["encargado","manager","admin"].includes(u.rol));
+  const revisores = act.filter(u => ["manager","admin"].includes(u.rol));
+  const optU = (lista, sel, vacio) => `<option value="">${vacio}</option>` + lista.map(u => `<option value="${esc(lower(u.email))}" ${lower(sel)===lower(u.email)?"selected":""}>${esc(u.nombre||u.email)} · ${ROLES[u.rol]}</option>`).join("");
+  const aprobUser = act.find(u => lower(u.email)===lower(ap.email));
+  $("#main").innerHTML = `
+    <div class="page-h"><div class="grow"><h1>Configuración</h1><p class="muted small">Estos cambios aplican de inmediato para todos.</p></div></div>
+    ${cardPrueba()}
+    <div class="card" style="margin-bottom:16px" id="alm"><div class="row" style="gap:16px;flex-wrap:wrap;align-items:center">
+      <div class="grow" style="min-width:260px"><h2 style="margin:0 0 4px">Almacenamiento</h2>
+        <div class="small muted">Cuánto ocupa la app en Supabase. Los avisos de más de 6 meses y los códigos vencidos se borran solos.</div></div>
+      <button class="btn" data-alm="ver">Ver uso</button></div><div id="alm_res"></div></div>
+    <div class="grid halves">
+      <div class="card"><h2>Aprobación</h2>
+        <div class="form">
+          <label class="f full">Nombre de la aprobación (se ve en la app y en los correos)<input type="text" id="c_at" value="${esc(ap.titulo)}" placeholder="Aprobación CEO"></label>
+          <label class="f">Nombre del aprobador<input type="text" id="c_an" value="${esc(ap.nombre)}"></label>
+          <label class="f">Cargo<input type="text" id="c_ac" value="${esc(ap.cargo)}" placeholder="CEO"></label>
+          <label class="f full">Usuario aprobador<select id="c_ae">${optU(act, ap.email, "— Selecciona —")}</select></label>
+        </div>
+        ${ap.email && !aprobUser ? `<div class="banner err" style="margin:10px 0 0">El correo ${esc(ap.email)} no es un usuario activo; no podrá entrar a aprobar.</div>` : ""}
+        ${aprobUser && !["aprobador","admin"].includes(aprobUser.rol) ? `<div class="hint" style="margin-top:8px">Sugerencia: asigna a ${esc(aprobUser.nombre)} el rol Aprobador en Usuarios.</div>` : ""}
+        <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn pri" id="g_ap">Guardar</button></div></div>
+
+      <div class="card"><h2>Correo y enlaces</h2>
+        <div class="form">
+          <label class="f full">URL de la app (para el botón "Abrir" de los correos)
+            <div class="row" style="flex-wrap:nowrap"><input type="url" id="c_url" value="${esc(app.app_url)}" placeholder="https://lcadevs.github.io/pricing/"><button class="btn sm" id="c_url_aqui" type="button">Usar esta</button></div></label>
+          <label class="f full">URL del flujo de Power Automate (envío de correos)
+            <input type="password" id="c_flow" value="${esc(c.flow_url||"")}" placeholder="https://prod-00.westus.logic.azure.com/…" autocomplete="off"></label>
+          <label class="f full">Dominios de correo permitidos (separados por coma)<input type="text" id="c_dom" value="${esc((c.dominios||[]).join(", "))}"></label>
+          <label class="f">Días antes de la fecha estimada para "por vencer"<input type="number" id="c_d1" min="1" value="${esc(app.dias_alerta)}"></label>
+          <label class="f">Días para "aprobación demorada"<input type="number" id="c_d2" min="1" value="${esc(app.dias_aprob_demora)}"></label>
+        </div>
+        <p class="hint">Sin flujo, las notificaciones igual aparecen en la campana de cada usuario.</p>
+        <div class="row" style="justify-content:flex-end"><button class="btn" id="g_prueba">Enviarme correo de prueba</button><button class="btn pri" id="g_app">Guardar</button></div></div>
+    </div>
+
+    <div class="card" style="margin-top:14px"><h2>Flujo de asignación</h2>
+      <p class="hint" style="margin-top:-6px">Cada solicitud nueva va primero al <b>manager</b> que la revisa. Si la aprueba (y, cuando lo pida, el CEO también), pasa al <b>encargado</b> que la atiende. Si un tipo no tiene regla, se usa el predeterminado. Sin manager configurado, la solicitud va directo al encargado.</p>
+      <div class="form"><label class="f">Manager que revisa (predeterminado)<select id="c_mdef">${optU(revisores, rv.default_email, "Sin revisión del manager")}</select></label>
+        <label class="f">Encargado que atiende (predeterminado)<select id="c_def">${optU(atienden, as.default_email, "Sin asignar (lo toma el equipo)")}</select></label></div>
+      <div class="tbl-wrap" style="margin-top:12px"><table><thead><tr><th>Tipo de solicitud</th><th>Manager que revisa</th><th>Encargado que atiende</th></tr></thead>
+        <tbody>${TIPOS.map((tp,i) => `<tr><td>${esc(tp)}</td><td><select data-mtp="${i}">${optU(revisores, (rv.por_tipo||{})[tp], "Usar el predeterminado")}</select></td><td><select data-tp="${i}">${optU(atienden, (as.por_tipo||{})[tp], "Usar el predeterminado")}</select></td></tr>`).join("")}</tbody></table></div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn pri" id="g_as">Guardar flujo</button></div></div>
+
+    ${cardEstados()}
+    ${cardFormulario()}
+
+    <div class="card" style="margin-top:14px"><h2>Plantillas de correo</h2>
+      <div class="form">
+        <label class="f full">Evento<select id="c_ev">${Object.entries(EVENTOS).map(([k,l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select></label>
+        <label class="f full">Asunto (déjalo vacío para no enviar este aviso)<input type="text" id="c_as"></label>
+        <label class="f full">Cuerpo<textarea id="c_cu" rows="9"></textarea></label>
+        <div class="full"><div class="hint" style="margin-bottom:6px">Variables disponibles (clic para insertar):</div><div class="chips">${VARIABLES.map(v => `<span class="chip" data-var="${v}">{${v}}</span>`).join("")}</div></div>
+      </div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn ghost" id="g_tdef">Restaurar predeterminada</button><button class="btn pri" id="g_tpl">Guardar plantilla</button></div></div>
+
+    <div class="card" style="margin-top:14px;padding:0;overflow:hidden"><div style="padding:16px 16px 0" class="row"><h2 class="grow">Últimos avisos generados</h2><button class="btn sm" id="g_log">Actualizar</button></div>
+      <div id="log" style="padding:0 0 4px"><div class="empty"><span class="spin"></span></div></div></div>`;
+
+  const guardar = async (btn, clave, valor) => { try{ await conBoton(btn, () => API.guardarConfig(clave, valor)); S.cfg[clave] = valor; toast("Configuración guardada"); }catch(e){ fallo(e); } };
+  $("#g_ap").onclick = async e => { const sel = act.find(u => lower(u.email)===$("#c_ae").value);
+    const v = {titulo:$("#c_at").value.trim()||"Aprobación", nombre:$("#c_an").value.trim() || sel?.nombre || "", cargo:$("#c_ac").value.trim(), email:$("#c_ae").value};
+    await guardar(e.currentTarget, "aprobacion", v); vConfig(); };
+  $("#c_ae").onchange = () => { const sel = act.find(u => lower(u.email)===$("#c_ae").value); if(sel && !$("#c_an").value.trim()) $("#c_an").value = sel.nombre||""; };
+  $("#c_url_aqui").onclick = () => $("#c_url").value = location.origin + location.pathname;
+  $("#g_app").onclick = async e => {
+    await guardar(e.currentTarget, "app", {app_url:$("#c_url").value.trim(), dias_alerta:+$("#c_d1").value||3, dias_aprob_demora:+$("#c_d2").value||2});
+    try{ await API.guardarConfig("flow_url", $("#c_flow").value.trim()); S.cfg.flow_url = $("#c_flow").value.trim();
+      const dom = $("#c_dom").value.split(/[,;\s]+/).map(x => lower(x).replace(/^@/,"")).filter(Boolean);
+      if(!dom.length) throw new Error("Debe quedar al menos un dominio permitido");
+      await API.guardarConfig("dominios", dom); S.cfg.dominios = dom; }catch(err){ fallo(err); } };
+  $("#g_prueba").onclick = async e => { try{ await conBoton(e.currentTarget, () => API.pruebaCorreo()); toast(S.cfg.flow_url ? "Correo de prueba enviado al flujo" : "Aviso de prueba creado (sin flujo configurado)"); cargarLog(); await recargar(); }catch(err){ fallo(err); } };
+  $("#g_as").onclick = async e => { const por = {}, mpor = {};
+    $$("[data-tp]").forEach(s => { if(s.value) por[TIPOS[+s.dataset.tp]] = s.value; });
+    $$("[data-mtp]").forEach(s => { if(s.value) mpor[TIPOS[+s.dataset.mtp]] = s.value; });
+    try{ await API.guardarConfig("revision", {default_email:$("#c_mdef").value, por_tipo:mpor}); S.cfg.revision = {default_email:$("#c_mdef").value, por_tipo:mpor}; }catch(err){ return fallo(err); }
+    await guardar(e.currentTarget, "asignacion", {default_email:$("#c_def").value, por_tipo:por}); };
+  montarEstados(guardar); montarEditorFormulario(guardar);
+
   const cargarTpl = () => { const p = S.cfg.plantillas[$("#c_ev").value] || {asunto:"",cuerpo:""}; $("#c_as").value = p.asunto||""; $("#c_cu").value = p.cuerpo||""; };
   $("#c_ev").onchange = cargarTpl; cargarTpl();
   let ultimo = $("#c_cu"); $("#c_as").onfocus = () => ultimo = $("#c_as"); $("#c_cu").onfocus = () => ultimo = $("#c_cu");
@@ -1802,6 +1927,76 @@ function cerrarModal(){ $("#modal-root").innerHTML = ""; document.onkeydown = nu
 const opcionesAtienden = sel => `<option value="">Sin asignar</option>` + S.usuarios.filter(u => ["encargado","manager","admin"].includes(u.rol) && u.activo)
   .map(u => `<option value="${esc(lower(u.email))}" ${lower(sel)===lower(u.email)?"selected":""}>${esc(u.nombre||u.email)}</option>`).join("");
 
+
+/* ---------- PDF de auditoría (una vez aprobada) ---------- */
+const aprobadaParaAuditoria = t => !["Revisión manager","Pendiente aprobación"].includes(t.estado)
+  && !["Pendiente","Rechazado"].includes(t.manager_estado) && !["Pendiente","Rechazado"].includes(t.aprob_estado);
+function imprimirAuditoria(t, bit, adj, notas){
+  const w = window.open("", "_blank");
+  if(!w) return toast("Permite las ventanas emergentes para generar el PDF", true);
+  const ap = S.cfg.aprobacion, ahora = new Date();
+  const f = x => x ? new Date(x).toLocaleString("es-CR",{day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit"}) : "—", n = e => e ? esc(nombreDe(e)) + ` <span class="m">&lt;${esc(lower(e))}&gt;</span>` : "—";
+  const fila = (k, v) => `<tr><th>${k}</th><td>${v}</td></tr>`;
+  const campos = camposDe(t.tipo).filter(c => (t.datos||{})[c.id]!=null && (t.datos||{})[c.id]!=="")
+    .map(c => fila(esc(c.etiqueta), `<span class="pre">${esc(t.datos[c.id])}</span>`)).join("");
+  const decisiones = [
+    ["Revisión del manager", t.manager_estado, t.manager_resuelto_por || t.manager_email, t.manager_resuelto_at, t.manager_comentario],
+    ...(t.requiere_aprobacion || t.aprob_estado!=="No aplica" ? [[esc(ap.titulo||"Aprobación"), t.aprob_estado, t.aprob_resuelto_por || t.aprob_email, t.aprob_resuelto_at, t.aprob_comentario]] : [])
+  ];
+  const horas = S.horas.filter(h => h.ticket_id===t.id);
+  const css = `@page{size:Letter;margin:16mm 14mm 18mm}*{box-sizing:border-box}body{font-family:"Segoe UI",Arial,sans-serif;color:#1A202C;font-size:10.5pt;margin:0}
+    h1{font-size:17pt;margin:0;color:#1F2D4A}h2{font-size:11.5pt;color:#1F2D4A;border-bottom:2px solid #1F2D4A;padding-bottom:3px;margin:18px 0 8px;page-break-after:avoid}
+    .top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1F2D4A;padding-bottom:10px}
+    .marca{font-weight:800;color:#1F2D4A;font-size:10pt;letter-spacing:.3px}.code{font-family:Consolas,monospace;font-size:13pt;font-weight:700}
+    .m{color:#8A94A3;font-size:9pt}table{width:100%;border-collapse:collapse;page-break-inside:auto}tr{page-break-inside:avoid}
+    th,td{text-align:left;vertical-align:top;padding:5px 7px;border-bottom:1px solid #E3E6EB}
+    table.kv th{width:30%;color:#4A5568;font-weight:600;background:#F9FAFB}table.l th{background:#1F2D4A;color:#fff;font-weight:600;font-size:9.5pt}
+    .ok{color:#2F6B3A;font-weight:700}.no{color:#A63D40;font-weight:700}.pre{white-space:pre-wrap}
+    .pie{margin-top:22px;border-top:1px solid #CED3DB;padding-top:8px;font-size:8.5pt;color:#4A5568}
+    .sello{display:inline-block;border:2px solid #1F2D4A;color:#1F2D4A;border-radius:6px;padding:4px 10px;font-weight:800;font-size:10pt;margin-top:6px}
+    @media screen{body{max-width:900px;margin:24px auto;padding:0 20px}.noprint{position:sticky;top:0;background:#fff;padding:10px 0;text-align:right}
+    .noprint button{background:#1F2D4A;color:#fff;border:0;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer}}@media print{.noprint{display:none}}`;
+  const cls = v => v==="Aprobado" ? "ok" : v==="Rechazado" ? "no" : "";
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(t.codigo)} · Registro de auditoría</title><style>${css}</style></head><body>
+    <div class="noprint"><button onclick="print()">Imprimir / Guardar como PDF</button></div>
+    <div class="top"><div><div class="marca">LEGRAND · PRICING DESK</div><h1>Registro de aprobación y atención</h1>
+      <div class="m">Solicitud especial de Pricing · documento para auditoría</div></div>
+      <div style="text-align:right"><div class="code">${esc(t.codigo)}</div><div class="sello">${esc(t.estado.toUpperCase())}</div></div></div>
+
+    <h2>1. Datos de la solicitud</h2><table class="kv">
+      ${fila("Título", esc(t.titulo))}${fila("Tipo de solicitud", esc(tipoTxt(t)))}${fila("Prioridad", esc(t.prioridad))}
+      ${fila("Solicitado por", n(t.solicitante_email))}${fila("Fecha de solicitud", f(t.created_at))}
+      ${t.descripcion ? fila("Descripción", `<div class="pre">${esc(t.descripcion)}</div>`) : ""}${campos}</table>
+
+    <h2>2. Aprobaciones</h2><table class="l"><thead><tr><th>Instancia</th><th>Decisión</th><th>Responsable</th><th>Fecha y hora</th><th>Comentario</th></tr></thead><tbody>
+      ${decisiones.map(([inst, dec, quien, cuando, com]) => `<tr><td><b>${inst}</b></td><td class="${cls(dec)}">${esc(dec==="No aplica" ? "No aplica (sin revisión configurada)" : dec)}</td><td>${n(quien)}</td><td>${f(cuando)}</td><td class="pre">${esc(com||"—")}</td></tr>`).join("")}</tbody></table>
+      ${t.requiere_aprobacion ? "" : `<div class="m" style="margin-top:4px">El manager determinó que no requería ${esc(ap.titulo||"aprobación adicional")}.</div>`}
+
+    <h2>3. Atención por Pricing</h2><table class="kv">
+      ${fila("Encargado", n(t.asignado_email))}${fila("Estado actual", esc(t.estado))}${fila("Fecha estimada (ETA)", t.fecha_eta ? t.fecha_eta.split("-").reverse().join("/") : "—")}
+      ${t.cerrado_at ? fila("Cerrado por", n(t.cerrado_por)) + fila("Fecha de cierre", f(t.cerrado_at)) + fila("Días totales", diasEntre(t.created_at, t.cerrado_at)) : ""}
+      ${fila("Tiempo de ejecución", t.horas_ejecucion!=null ? fHoras(t.horas_ejecucion) : "—")}
+      ${t.resolucion ? fila("Resolución", `<div class="pre">${esc(t.resolucion)}</div>`) : ""}</table>
+    ${horas.length ? `<table class="l" style="margin-top:8px"><thead><tr><th>Fecha</th><th>Registrado por</th><th>Nota</th><th>Horas</th></tr></thead><tbody>
+      ${horas.map(h => `<tr><td>${String(h.fecha).slice(0,10).split("-").reverse().join("/")}</td><td>${n(h.usuario_email)}</td><td>${esc(h.nota||"")}</td><td>${fHoras(h.horas)}</td></tr>`).join("")}</tbody></table>` : ""}
+
+    ${notas && notas.length ? `<h2>4. Notas de seguimiento de Pricing</h2><table class="l"><thead><tr><th style="width:22%">Fecha</th><th style="width:22%">Autor</th><th>Nota</th></tr></thead><tbody>
+      ${notas.map(x => `<tr><td>${f(x.created_at)}${x.editado_at?`<div class="m">editada ${f(x.editado_at)}</div>`:""}</td><td>${n(x.autor_email)}</td><td class="pre">${esc(x.texto)}</td></tr>`).join("")}</tbody></table>` : ""}
+
+    <h2>${notas && notas.length ? 5 : 4}. Archivos adjuntos</h2>
+    ${adj.length ? `<table class="l"><thead><tr><th>Archivo</th><th>Subido por</th><th>Fecha</th></tr></thead><tbody>${adj.map(a => `<tr><td>${esc(a.nombre)}</td><td>${n(a.subido_por)}</td><td>${f(a.created_at)}</td></tr>`).join("")}</tbody></table>` : `<div class="m">Sin archivos adjuntos.</div>`}
+
+    <h2>${notas && notas.length ? 6 : 5}. Historial completo (bitácora)</h2><table class="l"><thead><tr><th style="width:20%">Fecha y hora</th><th style="width:22%">Usuario</th><th>Movimiento</th></tr></thead><tbody>
+      ${bit.map(b => { const d = document.createElement("div"); d.innerHTML = evento(b); const tx = $(".txt", d)?.textContent || b.accion, cm = b.comentario;
+        return `<tr><td>${f(b.created_at)}</td><td>${n(b.usuario_email)}</td><td>${esc(tx)}${cm?`<div class="pre m">${esc(cm)}</div>`:""}</td></tr>`; }).join("")}</tbody></table>
+
+    <div class="pie">Documento generado desde Pricing Desk el ${ahora.toLocaleString("es-CR")} por ${esc(S.me.nombre||S.me.email)} &lt;${esc(S.me.email)}&gt;.
+      Las aprobaciones se registran electrónicamente con el usuario autenticado, la fecha y la hora; el historial no se puede modificar desde la aplicación.
+      Ticket interno #${t.id}.</div>
+    <script>window.onload = () => setTimeout(() => print(), 300);<\/script></body></html>`;
+  w.document.open(); w.document.write(html); w.document.close();
+}
+
 /* ---------- Nueva solicitud ---------- */
 function abrirNuevo(){
   const rv = S.cfg.revision || {}, mgr = rv.default_email;
@@ -1814,12 +2009,19 @@ function abrirNuevo(){
       <label class="f full">Descripción y justificación<textarea id="ndesc" rows="4" placeholder="Contexto, alcance, condiciones comerciales, competencia…"></textarea></label>
       <label class="f">Prioridad sugerida<select id="nprio">${PRIORIDADES.map(x=>`<option ${x==="Media"?"selected":""}>${x}</option>`).join("")}</select></label>
       <div class="full form" id="ncampos" style="padding:0"></div>
+      <div class="f full"><span>Archivos adjuntos (opcional · máx. 10 MB por archivo)</span>
+        <label class="btn sm" style="align-self:flex-start">📎 Agregar archivos<input type="file" id="nadj" class="hidden" multiple></label>
+        <div id="nadj-l" class="small muted"></div></div>
       <div class="full hint">Tu solicitud pasará primero por la revisión del manager${mgr?` (${esc(nombreDe(mgr))})`:""}; te avisaremos cada avance. El equipo de Pricing te indicará la fecha estimada de entrega.</div>
       <div class="full row" style="justify-content:flex-end"><button type="button" class="btn" id="ncancel">Cancelar</button><button class="btn pri" type="submit" id="ncrear">Enviar solicitud</button></div>
     </form>`);
   $("#ncancel").onclick = cerrarModal;
   const pintarCampos = () => { $("#notro-w").classList.toggle("hidden", $("#ntipo").value!=="Otros"); $("#ncampos").innerHTML = camposHTML($("#ntipo").value, {}, "nc"); };
   $("#ntipo").onchange = pintarCampos; pintarCampos();
+  let archivos = [];
+  const pintarAdj = () => { $("#nadj-l").innerHTML = archivos.map((f,i) => `<div class="row" style="gap:8px;padding:2px 0">📎 ${esc(f.name)} <span class="muted">${fBytes(f.size)}</span> <a href="#" data-qa="${i}" style="color:var(--brick)">quitar</a></div>`).join("");
+    $$("[data-qa]").forEach(a => a.onclick = e => { e.preventDefault(); archivos.splice(+a.dataset.qa, 1); pintarAdj(); }); };
+  $("#nadj").onchange = e => { for(const f of e.target.files){ if(f.size > MAX_ADJUNTO){ toast(`"${f.name}" pesa más de 10 MB`, true); continue; } archivos.push(f); } e.target.value = ""; pintarAdj(); };
   $("#fnuevo").onsubmit = async e => {
     e.preventDefault();
     const num = v => v==="" ? null : Number(v);
@@ -1829,7 +2031,10 @@ function abrirNuevo(){
     try{
       await conBoton($("#ncrear"), async () => {
         const nuevo = await API.crear(t);
-        toast(nuevo.estado==="Revisión manager" ? `Solicitud ${nuevo.codigo} enviada a revisión` : `Solicitud ${nuevo.codigo} enviada`);
+        let fallidos = 0;
+        for(const f of archivos){ try{ await API.subir(nuevo.id, f); }catch(err){ fallidos++; } }
+        toast((nuevo.estado==="Revisión manager" ? `Solicitud ${nuevo.codigo} enviada a revisión` : `Solicitud ${nuevo.codigo} enviada`)
+          + (archivos.length ? (fallidos ? ` · ${fallidos} archivo(s) no se pudieron adjuntar` : ` con ${archivos.length} archivo(s)`) : ""), !!fallidos);
         await recargar(); if(!staff()) S.tab = "mis"; pintarApp(); abrirDetalle(nuevo.id);
       });
     }catch(err){ fallo(err); }
@@ -1868,18 +2073,21 @@ async function abrirDetalle(id){
   let t = S.tickets.find(x => x.id===id);
   if(!t) return toast("Ticket no encontrado", true);
   modal(`<div class="empty"><span class="spin"></span> Cargando…</div>`, "wide");
-  let bit = [], adj = [];
-  try{ [bit, adj] = await Promise.all([API.bitacora(id), API.adjuntos(id)]); }catch(e){ fallo(e); }
-  const st = staff() || lower(t.asignado_email)===S.me.email, cerrado = esCerrado(t), a = alertaDe(t), ap = S.cfg.aprobacion;
+  let bit = [], adj = [], notas = [];
+  const equipo = staff() || lower(t.asignado_email)===S.me.email;
+  try{ [bit, adj, notas] = await Promise.all([API.bitacora(id), API.adjuntos(id), equipo && (enCola(t) || esCerrado(t)) ? API.notas(id) : []]); }catch(e){ fallo(e); }
+  const st = staff() || lower(t.asignado_email)===S.me.email, cerrado = esCerrado(t), a = st ? alertaDe(t) : null, ap = S.cfg.aprobacion;
   const editSol = !st && solicitantePuedeEditar(t);
   const v = (k, d="—") => t[k]==null || t[k]==="" ? d : t[k];
   const pos = colaGlobal().findIndex(x => x.id===id) + 1;
 
   let campos;
   if((st && !cerrado) || editSol){
-    const estOK = ABIERTOS_EDIT.includes(t.estado);
+    const opEst = [...new Set([...estadosTrabajo(), t.estado])].filter(x => x!=="En espera de información");
     campos = `<form class="form" id="fedit">
-      ${st ? `<label class="f">Estado<select id="e_estado" ${estOK?"":"disabled"}>${(estOK?ABIERTOS_EDIT:[t.estado]).map(x=>`<option ${t.estado===x?"selected":""}>${x}</option>`).join("")}</select></label>
+      ${st ? `${enCola(t) ? (t.estado==="En espera de información"
+          ? `<label class="f">Estado<input type="text" value="En espera de información" disabled title="Vuelve a la cola cuando el solicitante responda"></label>`
+          : `<label class="f">Estado<select id="e_estado">${opEst.map(x=>`<option ${t.estado===x?"selected":""}>${esc(x)}</option>`).join("")}</select></label>`) : ""}
       <label class="f">Prioridad<select id="e_prioridad">${PRIORIDADES.map(x=>`<option ${t.prioridad===x?"selected":""}>${x}</option>`).join("")}</select></label>
       <label class="f">Asignado a<select id="e_asignado_email">${opcionesAtienden(t.asignado_email)}</select></label>
       <label class="f">Fecha estimada de entrega (ETA)<input type="date" id="e_fecha_eta" value="${v("fecha_eta","")}" ${enCola(t)?"":"disabled title='Se define cuando la solicitud llega a la cola de Pricing'"}></label>` : ""}
@@ -1902,6 +2110,7 @@ async function abrirDetalle(id){
   if(st && !cerrado){
     acciones = `<div class="actions" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
       ${puedeCerrar(t) ? `<button class="btn pri" id="a_cerrar" ${t.aprob_estado==="Pendiente"?"disabled title='Hay una aprobación pendiente'":""}>Cerrar ticket…</button>` : ""}
+      ${puedeCerrar(t) && t.estado!=="En espera de información" ? `<button class="btn" id="a_info" title="La solicitud pasa a 'En espera de información'; cuando el solicitante responda vuelve directo a tu cola">Pedir información al solicitante…</button>` : ""}
       ${puedeCerrar(t) ? `<button class="btn" id="a_devolver" title="Por ejemplo, si requiere ${esc(aprobTitulo())}: el manager la revisa de nuevo y decide">Devolver al manager…</button>` : ""}
       ${!enCola(t) ? `<span class="hint">${t.estado==="Revisión manager" ? "Esperando la revisión del manager." : `Esperando ${esc(aprobTitulo())}.`} El encargado podrá trabajarla cuando pase a la cola.</span>` : ""}</div>`;
   } else if(st && cerrado && staff()){
@@ -1956,9 +2165,13 @@ async function abrirDetalle(id){
       <div><div class="row" style="gap:8px"><span class="code" style="font-size:16px">${esc(t.codigo)}</span>${tagEstado(t.estado)}${tagAprob(t)}${tagAlerta(a)}${tagPrueba(t)}${!cerrado&&st&&pos?`<span class="tag t-slate">#${pos} en cola</span>`:""}</div>
         <h1 style="margin-top:6px">${esc(t.titulo)}</h1>
         <div class="muted small">${esc(tipoTxt(t))} · Solicitado por ${esc(nombreDe(t.solicitante_email))} el ${fFecha(t.created_at)}</div></div>
-      <button class="x">×</button>
+      <div class="row" style="gap:8px;flex-wrap:nowrap;align-items:flex-start">${aprobadaParaAuditoria(t) ? `<button class="btn sm" id="a_pdf" title="Abre un documento con las aprobaciones y el historial para imprimir o guardar como PDF">🖨 PDF de auditoría</button>` : ""}<button class="x">×</button></div>
     </div>
-    ${t.estado==="En espera de información" && esMio(t) ? `<div class="banner">Pricing necesita información para continuar. Responde en los comentarios.</div>` : ""}
+    ${t.estado==="En espera de información" && esMio(t) ? `<div class="box ap" style="margin-bottom:12px"><h3>Pricing necesita información</h3>
+        <div class="desc" style="margin-bottom:10px">${esc(t.info_pedida || "Revisa los comentarios del equipo de Pricing.")}</div>
+        <label class="f">Tu respuesta<textarea id="rs_txt" rows="3" placeholder="Responde aquí. Si hace falta, adjunta archivos o corrige los datos antes de reenviar."></textarea></label>
+        <div class="actions" style="margin-top:10px"><button class="btn pri" id="rs_ok">Reenviar a Pricing</button><span class="hint">Vuelve directo a la cola de Pricing, sin pasar de nuevo por aprobación.</span></div></div>`
+      : t.estado==="En espera de información" && st ? `<div class="banner">Esperando respuesta de ${esc(nombreDe(t.solicitante_email))}: <b>${esc(t.info_pedida || "información adicional")}</b></div>` : ""}
     <div class="det">
       <div class="grid" style="gap:14px;align-content:start">
         ${cierre}${colaBox}
@@ -1969,6 +2182,13 @@ async function abrirDetalle(id){
       </div>
       <div class="grid" style="gap:14px;align-content:start">
         ${revision}${aprob}
+        ${equipo && (enCola(t) || esCerrado(t)) ? `<div class="card flat"><h3>Notas de seguimiento <span class="muted small" style="font-weight:500">· solo equipo de Pricing</span></h3>
+          ${!esCerrado(t) ? `<textarea id="nt_txt" rows="2" placeholder="Agrega una nota (avance, llamada, supuesto, pendiente…)"></textarea>
+          <div class="row" style="justify-content:flex-end;margin:8px 0 6px"><button class="btn sm pri" id="nt_btn">Agregar nota</button></div>` : ""}
+          <div id="nt_l">${notas.length ? notas.slice().reverse().map(n => `<div class="nota" data-nota="${n.id}">
+              <div class="who">${fFechaHora(n.created_at)} · ${esc(nombreDe(n.autor_email))}${n.editado_at?` <span class="muted">(editada ${fFechaHora(n.editado_at)})</span>`:""}
+                ${lower(n.autor_email)===S.me.email ? `<a href="#" class="nt-ed" style="margin-left:6px">Editar</a>` : ""}</div>
+              <div class="txt">${esc(n.texto)}</div></div>`).join("") : `<div class="muted small">Sin notas todavía.</div>`}</div></div>` : ""}
         <div class="card flat"><h3>Comentarios y bitácora</h3>
           <textarea id="com" rows="2" placeholder="Escribe un comentario…"></textarea>
           <div class="row" style="justify-content:flex-end;margin:8px 0 6px"><button class="btn sm pri" id="com_btn">Comentar</button></div>
@@ -1992,6 +2212,21 @@ async function abrirDetalle(id){
     try{ await API.actualizar(id, c); toast("Cambios guardados"); await recargarDetalle(); }catch(err){ fallo(err); }
   });
   $("#a_cerrar") && ($("#a_cerrar").onclick = () => abrirCierre(id));
+  $("#a_pdf") && ($("#a_pdf").onclick = () => imprimirAuditoria(t, bit, adj, notas));
+  $("#a_info") && ($("#a_info").onclick = async ev => {
+    const m = prompt(`¿Qué información necesitas de ${nombreDe(t.solicitante_email)}?\nSe le enviará por correo; cuando responda, la solicitud vuelve directo a tu cola.`, ""); if(m===null) return;
+    if(!m.trim()) return toast("Indica qué información necesitas", true);
+    try{ await conBoton(ev.currentTarget, () => API.pedirInfo(id, m)); toast(`Se pidió información a ${nombreDe(t.solicitante_email)}`); await recargarDetalle(); }catch(e){ fallo(e); } });
+  $("#rs_ok") && ($("#rs_ok").onclick = async ev => { const r = $("#rs_txt").value.trim(); if(!r) return toast("Escribe tu respuesta para Pricing", true);
+    try{ await conBoton(ev.currentTarget, () => API.reenviar(id, r)); toast(`${t.codigo} reenviada a Pricing`); await recargarDetalle(); }catch(e){ fallo(e); } });
+  $("#nt_btn") && ($("#nt_btn").onclick = async ev => { const x = $("#nt_txt").value.trim(); if(!x) return;
+    try{ await conBoton(ev.currentTarget, () => API.agregarNota(id, x)); await recargarDetalle(); }catch(e){ fallo(e); } });
+  $$(".nt-ed").forEach(a => a.onclick = e => { e.preventDefault(); const box = a.closest("[data-nota]"), nid = +box.dataset.nota, n = notas.find(x => x.id===nid);
+    $(".txt", box).innerHTML = `<textarea rows="3" class="nt-in">${esc(n.texto)}</textarea><div class="row" style="justify-content:flex-end;gap:6px;margin-top:6px"><button class="btn sm nt-cn">Cancelar</button><button class="btn sm pri nt-ok">Guardar</button></div>`;
+    a.remove();
+    $(".nt-cn", box).onclick = () => recargarDetalle();
+    $(".nt-ok", box).onclick = async ev => { const v = $(".nt-in", box).value.trim(); if(!v) return toast("La nota no puede quedar vacía", true);
+      try{ await conBoton(ev.currentTarget, () => API.editarNota(nid, v)); toast("Nota actualizada (la fecha original se conserva)"); await recargarDetalle(); }catch(err){ fallo(err); } }; });
   $("#a_cancelar") && ($("#a_cancelar").onclick = async ev => {
     const m = prompt(`¿Cancelar ${t.codigo}? Puedes indicar el motivo (opcional):`, ""); if(m===null) return;
     try{ await conBoton(ev.currentTarget, () => API.cancelar(id, m)); toast(`${t.codigo} cancelada`); await recargarDetalle(); }catch(e){ fallo(e); } });
@@ -2040,6 +2275,9 @@ function evento(b){
     case "Reapertura": cls="a"; txt = "Reabrió el ticket"; break;
     case "Cancelación": cls="r"; txt = "Canceló la solicitud"; break;
     case "Adjunto": txt = `Adjuntó <b>${esc(b.valor_nuevo)}</b>`; break;
+    case "Información solicitada": cls="a"; txt = "Pidió información al solicitante"; break;
+    case "Respuesta del solicitante": cls="c"; txt = "Respondió y reenvió la solicitud a Pricing"; break;
+    case "Devolución al manager": cls="a"; txt = `Devolvió la solicitud al manager <b>${esc(nombreDe(b.valor_nuevo))}</b>`; break;
     default: txt = esc(b.accion);
   }
   return `<div class="ev ${cls}"><span class="dt"></span><div>${quien}<div class="txt">${txt}</div>${b.comentario?`<div class="cm">${esc(b.comentario)}</div>`:""}</div></div>`;
