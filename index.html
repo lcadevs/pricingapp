@@ -90,7 +90,12 @@ a{color:var(--green)}
 .tab .n{background:var(--brick);color:#fff;border-radius:99px;padding:0 6px;font-size:11px;margin-left:4px}
 
 main{max-width:1320px;margin:0 auto;padding:18px 16px 70px}
-h1{font-size:20px;margin:0 0 4px} h2{font-size:15.5px;margin:0 0 10px} h3{font-size:14px;margin:0 0 8px}
+h1{font-size:24px;font-weight:800;letter-spacing:-.3px;margin:0 0 4px;color:var(--ink)}
+.page-h{padding-bottom:12px;border-bottom:1px solid var(--line)}
+/* Títulos de sección dentro de una pantalla: barra de acento + línea divisoria, para que no se confundan con el contenido */
+h2.sec{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:800;color:var(--green);margin:30px 0 12px;text-transform:none}
+h2.sec::before{content:"";width:4px;height:18px;border-radius:2px;background:var(--green);flex:none}
+h2.sec::after{content:"";flex:1;height:1px;background:var(--line)} h2{font-size:15.5px;margin:0 0 10px} h3{font-size:14px;margin:0 0 8px}
 .page-h{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:14px}
 .page-h p{margin:0}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:16px}
@@ -378,7 +383,7 @@ function toast(msg, err=false){
   document.body.appendChild(t); setTimeout(() => t.remove(), err ? 6000 : 3000);
 }
 function fallo(e){ console.error(e); toast(e?.message || String(e), true); }
-async function conBoton(btn, fn){ const txt = btn.innerHTML; btn.disabled = true; btn.innerHTML = `<span class="spin"></span>`; try{ return await fn(); } finally { if(btn.isConnected){ btn.disabled = false; btn.innerHTML = txt; } } }
+async function conBoton(btn, fn){ if(!btn) return fn(); const txt = btn.innerHTML; btn.disabled = true; btn.innerHTML = `<span class="spin"></span>`; try{ return await fn(); } finally { if(btn.isConnected){ btn.disabled = false; btn.innerHTML = txt; } } }
 
 /* =====================================================================
    Estado de la app
@@ -1210,7 +1215,7 @@ function vMis(){
       <button class="btn pri" id="mis-nueva">+ Nueva solicitud</button></div>
     ${abiertas.length ? `<div class="mine">${abiertas.map(card).join("")}</div>`
       : `<div class="card empty">No tienes solicitudes abiertas. <a href="#" id="mis-nueva2">Crear una</a></div>`}
-    <h2 style="margin-top:24px">Cerradas</h2>
+    <h2 class="sec">Cerradas</h2>
     ${cerradas.length ? `<div class="tbl-wrap"><table><thead><tr><th>Ticket</th><th>Solicitud</th><th>Resultado</th><th>Resolución</th><th>Cerrada</th><th class="r">Días</th></tr></thead>
       <tbody>${cerradas.map(t => `<tr class="click" data-open="${t.id}"><td class="code">${esc(t.codigo)}</td><td><div class="b">${esc(t.titulo)}</div><div class="sub">${esc(tipoTxt(t))}</div></td>
         <td>${tagEstado(t.estado)}</td><td class="small" style="max-width:380px">${esc(t.resolucion||"—")}</td><td class="small num">${fFecha(t.cerrado_at)}</td><td class="r num">${diasEntre(t.created_at, t.cerrado_at)}</td></tr>`).join("")}</tbody></table></div>`
@@ -1250,7 +1255,7 @@ function vInicio(){
       <button class="btn sm" id="recargar">Actualizar</button></div>
     ${rol()==="admin" && nPrueba() ? `<div class="banner" style="margin:0 0 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="grow">Estás viendo <b>${nPrueba()}</b> solicitudes de prueba.</span><button class="btn sm danger" data-prueba="quitar">Quitar datos de prueba</button></div>` : ""}
     <div class="grid kpis">${k.map(([l,v,c,f],i) => `<button class="kpi ${c}" data-k="${i}" ${f?"":"disabled style='cursor:default'"}><div class="v num">${v}</div><div class="l">${l}</div></button>`).join("")}</div>
-    <div class="page-h" style="margin-top:22px;margin-bottom:10px"><div class="grow"><h2 style="margin:0">Cola de atención</h2>
+    <div class="page-h" style="margin-top:22px;margin-bottom:10px;border:0;padding-bottom:0"><div class="grow"><h2 class="sec" style="margin:0 0 4px">Cola de atención</h2>
       <p class="hint">Arrastra desde ⠿ (o usa ▲ ▼) para cambiar el orden en que se atienden. El #1 es el siguiente.</p></div>
       <label class="check small"><input type="checkbox" id="solomios" ${S.soloMios?"checked":""}> Solo asignados a mí</label></div>
     ${lista.length ? `<div class="queue" id="queue">${lista.map(t => `<div class="qi ${pos.get(t.id)===1?"first":""}" data-id="${t.id}">
@@ -1528,7 +1533,7 @@ function vHoras(){
       <div class="card"><h2>Horas por semana</h2>${columnas({labels:lbls, series:[{name:"Horas", color:COL.green, values:sSem}], fmt:v=>fNum(v,0), etiquetas:semanas.length<=14})}</div>
       <div class="card"><h2>Horas por persona</h2>${barras(porQuien, v=>fNum(v,1)+" h")}</div>
     </div>
-    <h2 style="margin-top:18px">Detalle</h2>
+    <h2 class="sec">Detalle</h2>
     ${hr.length ? `<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Ticket</th><th>Tipo</th><th>Registrado por</th><th>Nota</th><th class="r">Horas</th></tr></thead>
       <tbody>${hr.slice(0,300).map(x => { const t = tk.get(x.ticket_id); return `<tr class="click" data-open="${x.ticket_id}"><td class="small num">${fFecha(x.fecha)}</td>
         <td><span class="code">${esc(t?.codigo||"")}</span> <span class="small">${esc(t?.titulo||"")}</span></td><td class="small">${esc(t?.tipo||"")}</td>
@@ -1561,7 +1566,7 @@ function vRevision(){
         ${ap.email ? `<label class="check" style="margin-top:10px"><input type="checkbox" data-rceo="${t.id}"> Requiere ${esc(ap.titulo)}${ap.nombre?` (${esc(ap.nombre)})`:""}</label>` : `<div class="hint" style="margin-top:8px">No hay aprobador configurado: al aprobar pasa directo al encargado.</div>`}
         <div class="actions" style="margin-top:10px"><button class="btn pri" data-rok="${t.id}">Aprobar</button><button class="btn danger" data-rno="${t.id}">Rechazar</button><button class="btn ghost" data-open="${t.id}">Ver ticket completo</button></div>
       </div>`).join("")}</div>` : `<div class="card empty">No tienes solicitudes por revisar. ✔</div>`}
-    <h2 style="margin-top:22px">Revisadas por mí</h2>${tablaTickets(hechas, false)}`;
+    <h2 class="sec">Revisadas por mí</h2>${tablaTickets(hechas, false)}`;
   $$("[data-open]").forEach(el => el.onclick = () => abrirDetalle(+el.dataset.open));
   $$("[data-rok]").forEach(b => b.onclick = () => revisarTicket(b, +b.dataset.rok, "Aprobado", $(`[data-rceo="${b.dataset.rok}"]`)?.checked, $(`[data-rcom="${b.dataset.rok}"]`).value));
   $$("[data-rno]").forEach(b => b.onclick = () => revisarTicket(b, +b.dataset.rno, "Rechazado", false, $(`[data-rcom="${b.dataset.rno}"]`).value));
@@ -1592,7 +1597,7 @@ function vAprobaciones(){
         <label class="f" style="margin-top:12px">Comentario (obligatorio si rechazas)<textarea data-com="${t.id}" rows="2"></textarea></label>
         <div class="actions" style="margin-top:10px"><button class="btn pri" data-ok="${t.id}">Aprobar</button><button class="btn danger" data-no="${t.id}">Rechazar</button><button class="btn ghost" data-open="${t.id}">Ver ticket completo</button></div>
       </div>`).join("")}</div>` : `<div class="card empty">No tienes aprobaciones pendientes. ✔</div>`}
-    <h2 style="margin-top:22px">Resueltas</h2>${tablaTickets(hechas, true)}`;
+    <h2 class="sec">Resueltas</h2>${tablaTickets(hechas, true)}`;
   $$("[data-open]").forEach(el => el.onclick = () => abrirDetalle(+el.dataset.open));
   const decidir = async (btn, id, dec) => { const com = $(`[data-com="${id}"]`).value.trim();
     if(dec==="Rechazado" && !com) return toast("Escribe el motivo del rechazo", true);
@@ -1894,11 +1899,12 @@ async function vConfig(){
       if(!dom.length) throw new Error("Debe quedar al menos un dominio permitido");
       await API.guardarConfig("dominios", dom); S.cfg.dominios = dom; }catch(err){ fallo(err); } };
   $("#g_prueba").onclick = async e => { try{ await conBoton(e.currentTarget, () => API.pruebaCorreo()); toast(S.cfg.flow_url ? "Correo de prueba enviado al flujo" : "Aviso de prueba creado (sin flujo configurado)"); cargarLog(); await recargar(); }catch(err){ fallo(err); } };
-  $("#g_as").onclick = async e => { const por = {}, mpor = {};
+  $("#g_as").onclick = async e => { const btn = e.currentTarget, por = {}, mpor = {};   // el botón se toma antes de cualquier await
     $$("[data-tp]").forEach(s => { if(s.value) por[TIPOS[+s.dataset.tp]] = s.value; });
     $$("[data-mtp]").forEach(s => { if(s.value) mpor[TIPOS[+s.dataset.mtp]] = s.value; });
-    try{ await API.guardarConfig("revision", {default_email:$("#c_mdef").value, por_tipo:mpor}); S.cfg.revision = {default_email:$("#c_mdef").value, por_tipo:mpor}; }catch(err){ return fallo(err); }
-    await guardar(e.currentTarget, "asignacion", {default_email:$("#c_def").value, por_tipo:por}); };
+    const rev = {default_email:$("#c_mdef").value, por_tipo:mpor}, asg = {default_email:$("#c_def").value, por_tipo:por};
+    try{ await conBoton(btn, async () => { await API.guardarConfig("revision", rev); await API.guardarConfig("asignacion", asg); });
+      S.cfg.revision = rev; S.cfg.asignacion = asg; toast("Flujo de asignación guardado"); }catch(err){ fallo(err); } };
   montarEstados(guardar); montarEditorFormulario(guardar);
 
   const cargarTpl = () => { const p = S.cfg.plantillas[$("#c_ev").value] || {asunto:"",cuerpo:""}; $("#c_as").value = p.asunto||""; $("#c_cu").value = p.cuerpo||""; };
