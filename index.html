@@ -296,13 +296,16 @@ function aplicarEstados(){
   ABIERTOS_EDIT = [...ESTADOS_FIJOS_TRABAJO, ...extra, "En espera de información"];
   ESTADOS = ["Revisión manager", "Pendiente aprobación", ...ABIERTOS_EDIT, ...CERRADOS];
 }
+// ETA obligatoria según el estado (configurable en Configuración → Estados de trabajo)
+const sinEtaLista = () => (S.cfg?.estados?.sin_eta) || ["En espera de información"];
+const etaObligatoria = e => esEstadoCola(e) && !sinEtaLista().includes(e);
 const esEstadoCola = e => !!e && !["Revisión manager","Pendiente aprobación", ...CERRADOS].includes(e);
 const enCola = t => !esCerrado(t) && esEstadoCola(t.estado);
 const PRIORIDADES = ["Baja","Media","Alta","Urgente"];
 const MONEDAS = ["USD","CRC","MXN","EUR"];
 const ROLES = {solicitante:"Solicitante", encargado:"Encargado Pricing", manager:"Manager Pricing", aprobador:"Aprobador", admin:"Administrador"};
 const CAMPOS = {tipo:"Tipo", tipo_otro:"Detalle tipo", titulo:"Título", descripcion:"Descripción", cliente:"Cliente",
-  linea_producto:"Línea de producto", prioridad:"Prioridad", estado:"Estado", asignado_email:"Asignado a",
+  linea_producto:"Línea de producto", prioridad:"Prioridad", estado:"Estado", asignado_email:"Encargado de Pricing",
   fecha_eta:"Fecha estimada (ETA)", fecha_vencimiento:"Vencimiento (anterior)", monto_impacto:"Monto de impacto", moneda:"Moneda",
   descuento_pct:"Descuento %", manager_email:"Manager revisor", manager_estado:"Revisión del manager", requiere_aprobacion:"Requiere aprobación", aprob_email:"Aprobador",
   aprob_estado:"Estado de aprobación", horas_ejecucion:"Horas de ejecución"};
@@ -413,7 +416,7 @@ function alertaDe(t){
   if(esCerrado(t)) return null;
   const h = hoy(), a = S.cfg.app;
   if(enCola(t)){
-    if(!t.fecha_eta) return "Sin estimado";
+    if(!t.fecha_eta) return etaObligatoria(t.estado) ? "Sin estimado" : null;
     if(t.fecha_eta < h) return "Atrasada";
     if(t.fecha_eta <= sumarDias(h, +a.dias_alerta||3)) return "Por vencer";
   }
@@ -1263,7 +1266,7 @@ function vInicio(){
         <div class="main" data-open="${t.id}"><div class="row" style="gap:8px"><span class="code">${esc(t.codigo)}</span>${tagPrueba(t)}<span class="tt ell grow">${esc(t.titulo)}</span></div>
           <div class="meta">${tagPrio(t.prioridad)}${tagEstado(t.estado)}${tagAprob(t)}${tagAlerta(alertaDe(t))}
             <span class="sub">${esc(nombreDe(t.solicitante_email))} · ${hace(t.created_at)}</span>
-            ${puedeEta(t) ? `<label class="eta-in ${t.fecha_eta?"":"falta"}" data-stop>Estimado <input type="date" data-eta="${t.id}" value="${t.fecha_eta||""}" min="${dia(t.created_at)}"></label>`
+            ${puedeEta(t) ? `<label class="eta-in ${t.fecha_eta||!etaObligatoria(t.estado)?"":"falta"}" data-stop>Estimado <input type="date" data-eta="${t.id}" value="${t.fecha_eta||""}" min="${dia(t.created_at)}"></label>`
               : `<span class="sub">· estimado ${fFecha(t.fecha_eta)}</span>`}</div></div>
         <div class="side">${puedeCerrar(t)?`<button class="btn sm" data-close="${t.id}">Cerrar</button>`:""}<div class="mv"><button data-up="${t.id}" title="Subir">▲</button><button data-down="${t.id}" title="Bajar">▼</button></div></div>
       </div>`).join("")}</div>` : `<div class="card empty">No hay tickets abiertos en la cola. 🎉</div>`}`;
@@ -1274,6 +1277,7 @@ function vInicio(){
   $$("#queue [data-open]").forEach(el => el.onclick = ev => { if(ev.target.closest("[data-stop]")) return; abrirDetalle(+el.dataset.open); });
   $$("[data-eta]").forEach(inp => inp.onchange = async () => { const t = S.tickets.find(x => x.id===+inp.dataset.eta), val = inp.value || null;
     if((t.fecha_eta||null)===val) return;
+    if(!val && etaObligatoria(t.estado)){ inp.value = t.fecha_eta||""; return toast(`La fecha estimada es obligatoria en "${t.estado}"`, true); }
     try{ inp.disabled = true; await API.actualizar(t.id, {fecha_eta:val}); toast(val ? `${t.codigo}: estimado ${fFecha(val)} · se avisó al solicitante` : `${t.codigo}: sin fecha estimada`); await refrescar(); }
     catch(e){ inp.disabled = false; fallo(e); } });
   $$("[data-close]").forEach(b => b.onclick = e => { e.stopPropagation(); abrirCierre(+b.dataset.close); });
@@ -1728,23 +1732,24 @@ const cardFormulario = () => `
       <div class="row" style="justify-content:flex-end;margin-top:12px"><span class="hint grow" id="fe-sucio"></span><button class="btn pri" id="g_form">Guardar formulario</button></div></div>`;
 const cardEstados = () => `
     <div class="card" style="margin-top:14px" id="est-card"><h2>Estados de trabajo</h2>
-      <p class="hint" style="margin-top:-6px">Son los estados que el encargado puede elegir mientras la solicitud está en la cola de Pricing. <b>En cola</b> y <b>En análisis</b> siempre existen; <b>En espera de información</b> se usa con el botón "Pedir información al solicitante". Agrega los que necesites (por ejemplo, "Validación con Finanzas").</p>
-      <div id="est-l"></div>
-      <div class="row" style="margin-top:10px;flex-wrap:nowrap;max-width:520px"><input type="text" id="est-n" maxlength="40" placeholder="Nuevo estado"><button class="btn sm" id="est-add">Agregar</button></div>
+      <p class="hint" style="margin-top:-6px">Son los estados que el encargado puede elegir mientras la solicitud está en la cola de Pricing. <b>En cola</b> y <b>En análisis</b> siempre existen; <b>En espera de información</b> se usa con el botón "Pedir información al solicitante". Agrega los que necesites (por ejemplo, "Consulta a fábrica") y marca en cuáles es obligatoria la fecha estimada (ETA).</p>
+      <div class="tbl-wrap" style="max-width:720px"><table><thead><tr><th>Estado</th><th style="width:150px">ETA obligatoria</th><th style="width:140px"></th></tr></thead><tbody id="est-l"></tbody></table></div>
+      <div class="row" style="margin-top:10px;flex-wrap:nowrap;max-width:520px"><input type="text" id="est-n" maxlength="40" placeholder="Nuevo estado (ej. Consulta a fábrica)"><button class="btn sm" id="est-add">Agregar</button></div>
       <div class="row" style="justify-content:flex-end;margin-top:12px"><span class="hint grow" id="est-sucio"></span><button class="btn pri" id="g_est">Guardar estados</button></div></div>`;
 function montarEstados(guardar){
   const L = [...((S.cfg.estados||{}).lista || [])];
+  const SIN = new Set(sinEtaLista());
   const enUso = e => S.tickets.filter(t => !esCerrado(t) && t.estado===e).length;
+  const sucio = () => { $("#est-sucio").textContent = "Cambios sin guardar"; };
+  const filaEst = (e, i, fijo) => `<tr><td>${esc(e)}${fijo?` <span class="tag t-gray">fijo</span>`:""}</td>
+      <td><label class="row" style="gap:6px;cursor:pointer"><input type="checkbox" data-etaob="${esc(e)}" ${SIN.has(e)?"":"checked"} style="width:auto"> ${SIN.has(e)?"No":"Sí"}</label></td>
+      <td class="r">${fijo?"":`<a href="#" data-eu="${i}" title="Subir">▲</a> <a href="#" data-ed="${i}" title="Bajar">▼</a> <a href="#" data-ex="${i}" style="color:var(--brick);margin-left:8px">Quitar</a>`}</td></tr>`;
   const pintar = () => {
-    $("#est-l").innerHTML = `<div class="chips" style="gap:8px">
-      ${ESTADOS_FIJOS_TRABAJO.map(e => `<span class="tag t-slate" title="Estado fijo">${esc(e)} · fijo</span>`).join("")}
-      ${L.map((e,i) => `<span class="tag t-gray" style="gap:6px;display:inline-flex;align-items:center">${esc(e)}
-        <a href="#" data-eu="${i}" title="Mover antes">◀</a><a href="#" data-ed="${i}" title="Mover después">▶</a><a href="#" data-ex="${i}" title="Quitar" style="color:var(--brick)">✕</a></span>`).join("")}
-      <span class="tag t-olive" title="Se usa con el botón Pedir información">En espera de información · fijo</span></div>`;
-    const sucio = () => { $("#est-sucio").textContent = "Cambios sin guardar"; };
+    $("#est-l").innerHTML = ESTADOS_FIJOS_TRABAJO.map(e => filaEst(e, -1, true)).join("") + L.map((e,i) => filaEst(e, i, false)).join("") + filaEst("En espera de información", -1, true);
+    $$("[data-etaob]", $("#est-l")).forEach(c => c.onchange = () => { c.checked ? SIN.delete(c.dataset.etaob) : SIN.add(c.dataset.etaob); sucio(); pintar(); });
     $$("[data-ex]").forEach(a => a.onclick = e => { e.preventDefault(); const i = +a.dataset.ex, n = enUso(L[i]);
       if(n) return toast(`No se puede quitar "${L[i]}": ${n} solicitud(es) abiertas están en ese estado`, true);
-      L.splice(i,1); sucio(); pintar(); });
+      SIN.delete(L[i]); L.splice(i,1); sucio(); pintar(); });
     $$("[data-eu]").forEach(a => a.onclick = e => { e.preventDefault(); const i = +a.dataset.eu; if(i>0){ [L[i-1],L[i]] = [L[i],L[i-1]]; sucio(); pintar(); } });
     $$("[data-ed]").forEach(a => a.onclick = e => { e.preventDefault(); const i = +a.dataset.ed; if(i<L.length-1){ [L[i+1],L[i]] = [L[i],L[i+1]]; sucio(); pintar(); } });
   };
@@ -1752,9 +1757,11 @@ function montarEstados(guardar){
   $("#est-add").onclick = () => { const n = $("#est-n").value.trim().replace(/\s+/g," "); if(!n) return;
     const todos = [...ESTADOS_FIJOS_TRABAJO, "En espera de información", "Revisión manager", "Pendiente aprobación", ...CERRADOS, ...L];
     if(todos.some(x => lower(x)===lower(n))) return toast("Ese estado ya existe", true);
-    L.push(n); $("#est-n").value = ""; $("#est-sucio").textContent = "Cambios sin guardar"; pintar(); };
+    L.push(n); $("#est-n").value = ""; sucio(); pintar(); };
   $("#est-n").onkeydown = e => { if(e.key==="Enter"){ e.preventDefault(); $("#est-add").click(); } };
-  $("#g_est").onclick = async e => { await guardar(e.currentTarget, "estados", {lista:L}); aplicarEstados(); $("#est-sucio").textContent = ""; };
+  $("#g_est").onclick = async e => { const btn = e.currentTarget;
+    await guardar(btn, "estados", {lista:L, sin_eta:[...SIN].filter(x => L.includes(x) || ESTADOS_FIJOS_TRABAJO.includes(x) || x==="En espera de información")});
+    aplicarEstados(); $("#est-sucio").textContent = ""; };
 }
 function montarEditorFormulario(guardar){
   // ---- Editor del formulario
@@ -2095,8 +2102,10 @@ async function abrirDetalle(id){
           ? `<label class="f">Estado<input type="text" value="En espera de información" disabled title="Vuelve a la cola cuando el solicitante responda"></label>`
           : `<label class="f">Estado<select id="e_estado">${opEst.map(x=>`<option ${t.estado===x?"selected":""}>${esc(x)}</option>`).join("")}</select></label>`) : ""}
       <label class="f">Prioridad<select id="e_prioridad">${PRIORIDADES.map(x=>`<option ${t.prioridad===x?"selected":""}>${x}</option>`).join("")}</select></label>
-      <label class="f">Asignado a<select id="e_asignado_email">${opcionesAtienden(t.asignado_email)}</select></label>
-      <label class="f">Fecha estimada de entrega (ETA)<input type="date" id="e_fecha_eta" value="${v("fecha_eta","")}" ${enCola(t)?"":"disabled title='Se define cuando la solicitud llega a la cola de Pricing'"}></label>` : ""}
+      <label class="f"><span id="e_eta_lbl">Fecha estimada de entrega (ETA)</span><input type="date" id="e_fecha_eta" value="${v("fecha_eta","")}" ${enCola(t)?"":"disabled title='Se define cuando la solicitud llega a la cola de Pricing'"}></label>
+      <div class="f full"><span>Encargado de Pricing</span><div class="row" id="reasig" style="gap:10px;align-items:center">
+        <b>${esc(t.asignado_email ? nombreDe(t.asignado_email) : "Sin asignar")}</b>
+        ${enCola(t) ? `<button type="button" class="btn sm" id="a_reasig">${t.asignado_email ? "Reasignar…" : "Asignar…"}</button>` : ""}</div></div>` : ""}
       <label class="f">Tipo<select id="e_tipo">${[...new Set([t.tipo, ...tiposActivos()])].map(x=>`<option ${t.tipo===x?"selected":""}>${esc(x)}</option>`).join("")}</select></label>
       ${camposHTML(t.tipo, t.datos, "ec")}
       <label class="f full">Título<input type="text" id="e_titulo" value="${esc(t.titulo)}"></label>
@@ -2105,7 +2114,7 @@ async function abrirDetalle(id){
     </form>`;
   } else {
     campos = `<dl class="kv">
-      <dt>Prioridad</dt><dd>${tagPrio(t.prioridad)}</dd><dt>Asignado a</dt><dd>${esc(t.asignado_email?nombreDe(t.asignado_email):"Equipo de Pricing")}</dd>
+      <dt>Prioridad</dt><dd>${tagPrio(t.prioridad)}</dd><dt>Encargado de Pricing</dt><dd>${esc(t.asignado_email?nombreDe(t.asignado_email):"Equipo de Pricing")}</dd>
       <dt>Fecha estimada (ETA)</dt><dd>${t.fecha_eta ? fFecha(t.fecha_eta) + (staff() && alertaDe(t)==="Atrasada" ? ` <span class="tag t-brick">Atrasada ${diasAtraso(t)} d</span>` : "") : (enCola(t) ? "Pricing aún no la define" : "Se define cuando llegue a la cola de Pricing")}</dd>
       ${detalleKV(t)}</dl>
       ${t.descripcion ? `<h3 style="margin-top:12px">Descripción</h3><div class="desc">${esc(t.descripcion)}</div>` : ""}`;
@@ -2207,7 +2216,7 @@ async function abrirDetalle(id){
   $("#fedit") && ($("#fedit").onsubmit = async e => {
     e.preventDefault(); const c = {};
     try{ const d = leerCampos(t.tipo, "ec", t.datos||{}); if(JSON.stringify(d)!==JSON.stringify(t.datos||{})) c.datos = d; }catch(err){ return toast(err.message, true); }
-    for(const k of ["estado","prioridad","asignado_email","fecha_eta","tipo","titulo","descripcion"]){
+    for(const k of ["estado","prioridad","fecha_eta","tipo","titulo","descripcion"]){
       const el = $("#e_"+k); if(!el || el.disabled) continue;
       let val = el.value.trim(); if(el.type==="number") val = val==="" ? null : Number(val); else if(val==="") val = null;
       const cur = t[k]==null || t[k]==="" ? null : (el.type==="number" ? Number(t[k]) : String(t[k]));
@@ -2215,9 +2224,23 @@ async function abrirDetalle(id){
     }
     if(!Object.keys(c).length) return toast("No hay cambios");
     if("titulo" in c && !c.titulo) return toast("El título no puede quedar vacío", true);
+    const estFin = c.estado ?? t.estado, etaFin = "fecha_eta" in c ? c.fecha_eta : t.fecha_eta;
+    if(st && enCola(t) && !etaFin && etaObligatoria(estFin)) { $("#e_fecha_eta")?.focus(); return toast(`La fecha estimada (ETA) es obligatoria en el estado "${estFin}"`, true); }
     try{ await API.actualizar(id, c); toast("Cambios guardados"); await recargarDetalle(); }catch(err){ fallo(err); }
   });
   $("#a_cerrar") && ($("#a_cerrar").onclick = () => abrirCierre(id));
+  const marcaEta = () => { const l = $("#e_eta_lbl"); if(!l) return; const e = $("#e_estado")?.value || t.estado;
+    l.innerHTML = "Fecha estimada de entrega (ETA)" + (enCola(t) && etaObligatoria(e) ? ' <b style="color:var(--brick)">*</b>' : ' <span class="muted">(opcional en este estado)</span>'); };
+  marcaEta(); $("#e_estado") && ($("#e_estado").onchange = marcaEta);
+  $("#a_reasig") && ($("#a_reasig").onclick = () => {
+    const ops = S.usuarios.filter(u => ["encargado","manager","admin"].includes(u.rol) && u.activo && lower(u.email)!==lower(t.asignado_email))
+      .map(u => `<option value="${esc(lower(u.email))}">${esc(u.nombre||u.email)} · ${esc(ROLES[u.rol])}</option>`).join("");
+    if(!ops) return toast("No hay otras personas del equipo de Pricing activas", true);
+    $("#reasig").innerHTML = `<select id="rs_sel" style="max-width:320px">${ops}</select><button type="button" class="btn sm pri" id="rs_go">Reasignar y avisar</button><button type="button" class="btn sm" id="rs_no">Cancelar</button>`;
+    $("#rs_no").onclick = () => recargarDetalle();
+    $("#rs_go").onclick = async ev => { const nuevo = $("#rs_sel").value;
+      try{ await conBoton(ev.currentTarget, () => API.actualizar(id, {asignado_email:nuevo})); toast(`Reasignada a ${nombreDe(nuevo)} · se le avisó por correo`); await recargarDetalle(); }catch(err){ fallo(err); } };
+  });
   $("#a_pdf") && ($("#a_pdf").onclick = () => imprimirAuditoria(t, bit, adj, notas));
   $("#a_info") && ($("#a_info").onclick = async ev => {
     const m = prompt(`¿Qué información necesitas de ${nombreDe(t.solicitante_email)}?\nSe le enviará por correo; cuando responda, la solicitud vuelve directo a tu cola.`, ""); if(m===null) return;
