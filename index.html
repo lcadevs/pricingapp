@@ -102,6 +102,10 @@ h2.sec::after{content:"";flex:1;height:1px;background:var(--line)} h2{font-size:
 .card.flat{box-shadow:none}
 .grid{display:grid;gap:14px}
 .kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.ms{position:relative}.ms-b{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font:inherit;font-size:13px;cursor:pointer;white-space:nowrap;color:var(--ink)}
+.ms-b.on{border-color:var(--green);background:var(--green-50);font-weight:700}
+.ms-p{position:absolute;z-index:30;top:calc(100% + 4px);left:0;min-width:240px;max-height:340px;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-lg);padding:8px 10px}
+.ms-o{display:flex;gap:8px;align-items:center;padding:5px 2px;font-size:13px;cursor:pointer;white-space:nowrap}.ms-o input{width:auto}
 .nota{border-left:3px solid var(--green-100);padding:6px 10px;margin:8px 0;background:var(--surface-2);border-radius:0 8px 8px 0}
 .nota .who{font-size:12px;color:var(--ink-3)}.nota .txt{white-space:pre-wrap;margin-top:2px}.nota textarea{width:100%}
 .eta-in{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-3);margin-left:4px}
@@ -143,7 +147,9 @@ input:disabled,select:disabled,textarea:disabled{background:var(--surface-2);col
 .chip{font-size:12px;background:var(--surface-2);border:1px solid var(--line);border-radius:99px;padding:2px 8px;font-family:ui-monospace,Consolas,monospace;cursor:pointer}
 
 /* Filtros y tabla */
-.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-bottom:12px}
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-bottom:12px}
+.filters > input[type=search]{flex:1 1 220px;min-width:200px}.filters .ms-b{height:40px}
+.filters label.f{flex:0 0 auto;font-size:12px}.filters label.f input{height:40px}
 .tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
 table{border-collapse:collapse;width:100%;font-size:13.5px}
 th{text-align:left;font-size:12px;color:var(--ink-3);font-weight:700;text-transform:uppercase;letter-spacing:.3px;padding:10px 12px;background:var(--surface-2);border-bottom:1px solid var(--line);white-space:nowrap}
@@ -223,8 +229,12 @@ td.r,th.r{text-align:right}
 .ov{position:fixed;inset:0;background:rgba(10,25,22,.45);z-index:50;display:flex;align-items:flex-start;justify-content:center;padding:4vh 12px;overflow-y:auto}
 .modal{background:var(--surface);border-radius:18px;box-shadow:var(--shadow-lg);width:100%;max-width:720px;padding:20px}
 .modal.wide{max-width:1100px} .modal.narrow{max-width:520px}
-.modal-h{display:flex;align-items:flex-start;gap:10px;margin-bottom:14px}
-.x{margin-left:auto;background:none;border:0;font-size:22px;line-height:1;color:var(--ink-3)}
+.modal-h{display:flex;align-items:flex-start;gap:10px;margin:-20px -20px 14px;padding:16px 20px 12px;position:sticky;top:0;z-index:6;
+  background:var(--surface);border-radius:18px 18px 0 0;border-bottom:1px solid var(--line)}
+.x{margin-left:auto;flex:none;width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--slate-50);
+  font-size:24px;line-height:1;color:var(--ink);display:grid;place-items:center;cursor:pointer}
+.x:hover{background:var(--slate-200)}
+.ok-pop p{font-size:15px;line-height:1.55}
 .det{display:grid;grid-template-columns:1.25fr 1fr;gap:16px}
 @media (max-width:900px){.det{grid-template-columns:1fr}}
 .box{border:1px solid var(--line);border-radius:var(--r);padding:14px;background:var(--surface-2)}
@@ -314,7 +324,7 @@ const EVENTOS = {
   manager:"Al solicitante: decisión del manager", aprobacion:"Al aprobador (CEO): solicitud de aprobación",
   decision:"Al solicitante y al manager: decisión del CEO", nuevo:"Al encargado: solicitud asignada a su cola",
   info:"Al solicitante: Pricing necesita información", comentario:"Comentario nuevo (a la otra parte)",
-  eta:"Al solicitante: Pricing define o cambia la fecha estimada", reenviado:"Al encargado: el solicitante respondió y reenvió", devuelto:"Al manager: el encargado le devuelve una solicitud", estado:"Al solicitante: su solicitud cambia de estado", cierre:"Al solicitante: ticket cerrado", cancelado:"A quien la tenía: el solicitante la canceló", cierre_manager:"Al manager: ticket cerrado", acceso:"Al administrador: alguien solicita acceso",
+  eta:"Al solicitante: Pricing define o cambia la fecha estimada", reenviado:"Al encargado: el solicitante respondió y reenvió", nota:"Al solicitante: Pricing agregó una nota de seguimiento", devuelto:"Al manager: el encargado le devuelve una solicitud", estado:"Al solicitante: su solicitud cambia de estado", cierre:"Al solicitante: ticket cerrado", cancelado:"A quien la tenía: el solicitante la canceló", cierre_manager:"Al manager: ticket cerrado", acceso:"Al administrador: alguien solicita acceso",
   bienvenida:"Al usuario nuevo: ya tiene acceso", codigo:"Código de ingreso (no se guarda copia)", prueba:"Correo de prueba"
 };
 const VARIABLES = ["codigo","titulo","tipo","cliente","prioridad","estado","estado_anterior","descripcion","solicitante","encargado","vencimiento","eta",
@@ -332,16 +342,17 @@ const CFG_DEFAULT = {
   plantillas:{
     recibido:{asunto:"Recibimos tu solicitud {codigo}", cuerpo:"Hola {solicitante},\n\nRecibimos tu solicitud de Pricing:\n\n{codigo} · {titulo}\nTipo: {tipo}\n\nPuedes ver su avance y tu posición en la cola aquí:\n{link}"},
     nuevo:{asunto:"Nueva solicitud {codigo} · {titulo}", cuerpo:"Hola {encargado},\n\nSe te asignó una nueva solicitud de Pricing.\n\n{codigo} · {titulo}\nTipo: {tipo}\nPrioridad: {prioridad}\nSolicitado por: {solicitante}\n{detalle}\n\n{descripcion}\n\n{link}"},
-    aprobacion:{asunto:"{aprobacion} requerida · {codigo} · {titulo}", cuerpo:"Hola {aprobador},\n\nSe requiere tu aprobación para la siguiente solicitud de Pricing:\n\n{codigo} · {titulo}\nTipo: {tipo}\nSolicitado por: {solicitante}\n{detalle}\n\n{descripcion}\n\nNota del manager: {nota}\n\nRevisa y aprueba o rechaza aquí:\n{link}"},
+    aprobacion:{asunto:"{aprobacion} requerida · {codigo} · {titulo}", cuerpo:"Hola {aprobador},\n\n{manager} revisó esta solicitud y pide tu {aprobacion}.\n\nSolicitud: {codigo} · {titulo}\nTipo: {tipo}\nSolicitado por: {solicitante}\nPrioridad: {prioridad}\n{detalle}\n\nDescripción:\n{descripcion}\n\nNota del manager:\n{nota}\n\n{link}"},
     revision:{asunto:"Solicitud por revisar · {codigo} · {titulo}", cuerpo:"Hola {manager},\n\n{solicitante} envió una solicitud de Pricing que requiere tu revisión:\n\n{codigo} · {titulo}\nTipo: {tipo}\n{detalle}\n\n{descripcion}\n\nApruébala o recházala aquí:\n{link}"},
     manager:{asunto:"{manager} {decision} tu solicitud {codigo}", cuerpo:"Hola {solicitante},\n\n{manager} {decision} tu solicitud {codigo} · {titulo}.\n\nComentario: {comentario}\n\n{siguiente}\n\n{link}"},
     decision:{asunto:"{aprobacion}: {decision} · {codigo}", cuerpo:"Hola,\n\nLa solicitud {codigo} · {titulo} de {solicitante} fue {decision} por {aprobador}.\n\nComentario: {comentario}\n\n{siguiente}\n\n{link}"},
     cancelado:{asunto:"Solicitud cancelada · {codigo}", cuerpo:"Hola,\n\n{solicitante} canceló su solicitud {codigo} · {titulo}.\n\nMotivo: {comentario}\n\nYa no requiere ninguna acción de tu parte.\n\n{link}"},
-    cierre_manager:{asunto:"Solicitud cerrada · {codigo}: {resultado}", cuerpo:"Hola {manager},\n\nLa solicitud {codigo} · {titulo} de {solicitante} fue cerrada como {resultado} por {encargado}.\n\nTiempo de ejecución: {horas} h\n\nResolución:\n{resolucion}\n\n{link}"},
+    cierre_manager:{asunto:"Solicitud cerrada · {codigo}: {resultado}", cuerpo:"Hola {manager},\n\nLa solicitud {codigo} · {titulo} de {solicitante} fue cerrada como {resultado} por {encargado}.\n\nResolución:\n{resolucion}\n\n{link}"},
     info:{asunto:"Pricing necesita información · {codigo}", cuerpo:"Hola {solicitante},\n\nPara continuar con tu solicitud {codigo} · {titulo}, el equipo de Pricing necesita información adicional. Revisa los comentarios y responde en el ticket:\n{link}"},
     comentario:{asunto:"Nuevo comentario en {codigo}", cuerpo:"{autor} comentó en {codigo} · {titulo}:\n\n{comentario}\n\n{link}"},
     estado:{asunto:"Tu solicitud {codigo} ahora está: {estado}", cuerpo:"Hola {solicitante},\n\nTu solicitud {codigo} · {titulo} cambió de estado:\n{estado_anterior} → {estado}\n\nFecha estimada: {eta}\nAtendida por: {encargado}\n\nPuedes ver su avance aquí:\n{link}"},
     devuelto:{asunto:"Solicitud devuelta para tu revisión · {codigo}", cuerpo:"Hola {manager},\n\n{autor} devolvió la solicitud {codigo} · {titulo} de {solicitante} para que la revises de nuevo.\n\nMotivo: {comentario}\n\nSi necesita {aprobacion}, márcalo al aprobarla.\n\n{link}"},
+    nota:{asunto:"Nueva nota en tu solicitud {codigo}", cuerpo:"Hola {solicitante},\n\n{autor} agregó una nota de seguimiento a tu solicitud {codigo} · {titulo}.\n\nNota:\n{comentario}\n\nEstado: {estado}\nFecha estimada: {eta}\n\n{link}"},
     reenviado:{asunto:"{solicitante} respondió · {codigo}", cuerpo:"Hola {encargado},\n\n{solicitante} respondió a la información que pediste en {codigo} · {titulo}:\n\n{comentario}\n\nLa solicitud volvió a tu cola (estado: {estado}) sin pasar de nuevo por revisión.\n\n{link}"},
     eta:{asunto:"Fecha estimada para tu solicitud {codigo}", cuerpo:"Hola {solicitante},\n\nEl equipo de Pricing estima que tu solicitud {codigo} · {titulo} estará lista el {eta}.\n\nAtendida por: {encargado}\n\nPuedes ver su avance aquí:\n{link}"},
     cierre:{asunto:"Tu solicitud {codigo} fue cerrada: {resultado}", cuerpo:"Hola {solicitante},\n\nTu solicitud {codigo} · {titulo} fue cerrada como {resultado}.\n\nResolución:\n{resolucion}\n\nAtendida por: {encargado}\n\n{link}"},
@@ -521,7 +532,8 @@ const API_SB = {
   async guardarConfig(clave, valor){ chk(await sb.from("pricing_config").upsert({clave, valor, updated_at:new Date().toISOString(), updated_by:S.me.email})); },
   async tickets(){ return chk(await sb.from("pricing_tickets").select("*").order("id",{ascending:false})); },
   async miCola(){ return chk(await sb.rpc("pricing_mi_cola")) || []; },
-  async horas(){ return staff() ? chk(await sb.from("pricing_horas").select("*").order("fecha",{ascending:false}).limit(5000)) : []; },
+  async horas(){ return []; },   // (versión 12: ya no se registran horas)
+  async horasAntiguas(){ return staff() ? chk(await sb.from("pricing_horas").select("*").order("fecha",{ascending:false}).limit(5000)) : []; },
   async notifs(){ return chk(await sb.from("pricing_notificaciones").select("id,ticket_id,codigo,evento,asunto,leida,created_at").eq("para_email", S.me.email).order("id",{ascending:false}).limit(40)); },
   async marcarLeidas(ids){ if(ids.length) chk(await sb.from("pricing_notificaciones").update({leida:true}).in("id", ids)); },
   async correosLog(){ return chk(await sb.from("pricing_notificaciones").select("id,evento,para_email,asunto,correo,error_envio,created_at").order("id",{ascending:false}).limit(25)); },
@@ -676,7 +688,16 @@ const API_DEMO = {
     if(!u) return (Demo.db.solicitudes||[]).some(x => x.email===e && x.estado==="Pendiente") ? "solicitado" : "no_registrado";
     return u.activo ? "ok" : "inactivo"; },
   async ingresar(email, extra={}){
-    const estado = await this.estadoAcceso(email); if(estado!=="ok") return {estado};
+    const estado = await this.estadoAcceso(email);
+    if(estado==="no_registrado" || estado==="solicitado"){          // autoregistro (en demo el código es 123456)
+      if(extra.codigo){
+        if(extra.codigo!=="123456") return {estado:"codigo", registro:true, error:"Código incorrecto."};
+        const u = {id:"u"+Date.now(), email:lower(email), nombre:extra.nombre||lower(email).split("@")[0], rol:"solicitante", activo:true, created_at:Demo.ahora()};
+        Demo.db.usuarios.push(u); Demo.save(); sessionStorage.setItem("pricing_demo_user", u.id); return {estado:"ok", rol:"solicitante", nuevo:true};
+      }
+      return extra.nombre ? {estado:"codigo", registro:true, reenvio_en:60} : {estado:"registro"};
+    }
+    if(estado!=="ok") return {estado};
     const u = Demo.db.usuarios.find(x => x.email===lower(email)), pin = extra.pin, codigo = extra.codigo;
     let cambiar_pin = false;
     {   // todos los roles ingresan con código (versión 11)
@@ -760,7 +781,8 @@ const API_DEMO = {
   async notas(id){ return clon((Demo.db.notas||[]).filter(n => n.ticket_id===id).sort((a,b) => a.created_at.localeCompare(b.created_at))); },
   async agregarNota(id, texto){ texto = (texto||"").trim(); if(!texto) throw new Error("Escribe la nota");
     const l = (Demo.db.notas ||= []); Demo.db.seq.nt = (Demo.db.seq.nt||0) + 1;
-    const n = {id:Demo.db.seq.nt, ticket_id:id, autor_email:S.me.email, texto, created_at:Demo.ahora(), editado_at:null, editado_por:null}; l.push(n); Demo.save(); return clon(n); },
+    const n = {id:Demo.db.seq.nt, ticket_id:id, autor_email:S.me.email, texto, created_at:Demo.ahora(), editado_at:null, editado_por:null}; l.push(n);
+    const tk = Demo.t(id); Demo.notificar(tk, "nota", tk.solicitante_email, {comentario:texto, autor:S.me.nombre||S.me.email}); Demo.save(); return clon(n); },
   async editarNota(nid, texto){ texto = (texto||"").trim(); if(!texto) throw new Error("La nota no puede quedar vacía");
     const n = (Demo.db.notas||[]).find(x => x.id===nid); if(!n || n.autor_email!==S.me.email) throw new Error("Solo quien escribió la nota puede editarla");
     if(n.texto!==texto) Object.assign(n, {texto, editado_at:Demo.ahora(), editado_por:S.me.email}); Demo.save(); return clon(n); },
@@ -854,11 +876,9 @@ const API_DEMO = {
   async cerrar(id, res, horas, txt){
     const t = Demo.t(id);
     if(t.aprob_estado==="Pendiente") throw new Error("Hay una aprobación pendiente");
-    Demo.db.horas.push({id:++Demo.db.seq.h, ticket_id:id, horas, usuario_email:S.me.email, fecha:hoy(), nota:"Cierre: "+res, created_at:Demo.ahora()});
-    const total = Demo.db.horas.filter(x => x.ticket_id===id).reduce((s,x)=>s+Number(x.horas),0);
-    Demo.cambio(t, {estado:res, horas_ejecucion:total});
+    Demo.cambio(t, {estado:res});
     Object.assign(t, {resolucion:txt, cerrado_por:S.me.email, cerrado_at:Demo.ahora(), asignado_email:t.asignado_email||S.me.email});
-    Demo.log(id, "Cierre", null, null, `${res} · ${horas} h`, txt); Demo.notificar(t, "cierre", t.solicitante_email);
+    Demo.log(id, "Cierre", null, null, res, txt); Demo.notificar(t, "cierre", t.solicitante_email);
     const mgr = t.manager_resuelto_por || t.manager_email; if(mgr && lower(mgr)!==lower(t.solicitante_email)) Demo.notificar(t, "cierre_manager", mgr);
     Demo.save(); return clon(t);
   },
@@ -968,7 +988,7 @@ function pintarLogin(){
         <label class="f">Correo corporativo<input type="email" id="lemail" required autocomplete="email" value="${esc(L.email)}" placeholder="nombre@legrand.com"></label>
         <button class="btn pri" type="submit" id="b1">Continuar</button>
       </form>
-      ${DEMO ? `<div class="banner" style="margin:16px 0 0"><b>Modo demo.</b> Los solicitantes entran directo; los demás roles reciben un código (en demo es <b>123456</b>); el admin también puede usar PIN (inicial <b>00000</b>). Correos de prueba:
+      ${DEMO ? `<div class="banner" style="margin:16px 0 0"><b>Modo demo.</b> Todos reciben un código (en demo es <b>123456</b>); un correo nuevo de dominio permitido se registra solo; el admin también puede usar PIN (inicial <b>00000</b>). Correos de prueba:
         <div class="chips" style="margin-top:8px">${Demo.db.usuarios.filter(u=>u.activo).map(u => `<span class="chip" data-mail="${esc(u.email)}" title="${ROLES[u.rol]}">${esc(u.email)}</span>`).join("")}</div>
         <button class="btn ghost sm" id="reset" style="margin-top:10px">Restablecer datos de ejemplo</button></div>` : ""}`);
     $("#lemail").focus();
@@ -987,7 +1007,8 @@ function pintarLogin(){
     try{ if(S.me || await API.sesion()) return iniciar(); }catch(e){}   // ya entró con la petición anterior
     if(r.estado==="pin") return pasoPin(r.error);
     if(r.estado==="codigo") return pasoCodigo(r);
-    if(r.estado==="no_registrado") return pasoSolicitud();
+    if(r.estado==="registro" || r.estado==="solicitado") return pasoRegistro(r.error);
+    if(r.estado==="no_registrado") return pasoSolicitud(r.error);
     if(r.estado==="dominio") return pasoCorreo(`<div class="banner err">Ese correo no pertenece a un dominio autorizado (por ejemplo @legrand.com o @legrand-ext.com).</div>`);
     if(r.estado==="inactivo") return pasoCorreo(`<div class="banner err">Tu usuario está desactivado. Escribe al administrador para reactivarlo.</div>`);
     if(r.estado==="solicitado") return pasoCorreo(`<div class="banner">Tu solicitud de acceso ya está con el administrador. Te avisaremos por correo cuando esté lista.</div>`);
@@ -1013,6 +1034,21 @@ function pintarLogin(){
       try{ const r = await unaVez(() => conBoton($("#b2"), () => API.ingresar(L.email, {pin}))); if(r && r.estado!=="ok") S.pinIngresado = null; resultado(r); }catch(err){ S.pinIngresado = null; fallo(err); } };
   };
 
+  const pasoRegistro = (error) => {
+    const sug = L.nombre || L.email.split("@")[0].split(/[._-]+/).filter(Boolean).map(x => x[0].toUpperCase() + x.slice(1)).join(" ");
+    pantallaLogin(`<h1>Crea tu acceso</h1>
+      <p class="muted small" style="margin-top:0"><b>${esc(L.email)}</b> todavía no está registrado. Escribe tu nombre y te enviaremos un código a ese correo para confirmar que es tuyo; con eso quedas registrado como solicitante.</p>
+      ${error ? `<div class="banner err">${esc(error)}</div>` : ""}
+      <form class="grid" style="gap:10px" id="frg">
+        <label class="f">Tu nombre completo<input type="text" id="rnom" required maxlength="120" value="${esc(sug)}"></label>
+        <button class="btn pri" type="submit" id="brg">Enviarme el código</button>
+        <button class="btn ghost sm" type="button" id="otro">Usar otro correo</button>
+      </form>`);
+    $("#rnom").focus(); $("#rnom").select(); $("#otro").onclick = () => { L.nombre = ""; pasoCorreo(); };
+    $("#frg").onsubmit = async e => { e.preventDefault(); L.nombre = $("#rnom").value.trim(); if(L.nombre.length < 3) return toast("Escribe tu nombre completo", true);
+      try{ resultado(await unaVez(() => conBoton($("#brg"), () => API.ingresar(L.email, {nombre:L.nombre})))); }catch(err){ fallo(err); } };
+  };
+
   const pasoCodigo = (r) => {
     pantallaLogin(`<h1>Revisa tu correo</h1>
       <p class="muted small" style="margin-top:0">Enviamos un código de 6 dígitos a <b>${esc(L.email)}</b>. Puede tardar un minuto; revisa también el correo no deseado.</p>
@@ -1025,6 +1061,7 @@ function pintarLogin(){
           <button class="btn ghost sm" type="button" id="reenv" disabled>Reenviar código</button></div>
         ${r.puede_pin ? `<button class="btn sm" type="button" id="conpin">Entrar con mi PIN</button>` : ""}
       </form>
+      ${r.registro ? `<div class="banner" style="margin:0">Al validar el código quedarás registrado como <b>${esc(L.nombre||"")}</b>.</div>` : ""}
       <p class="hint" style="margin-bottom:0">${DEMO ? "Modo demo: el código es <b>123456</b>. " : ""}El código vence en 10 minutos. Solo lo harás una vez en este navegador: la sesión queda guardada hasta que presiones "Salir".</p>`);
     $("#lcode").focus();
     $("#lcode").oninput = e => { e.target.value = e.target.value.replace(/\D/g,""); if(e.target.value.length===6 && !loginOcupado) $("#fc").requestSubmit(); };
@@ -1033,14 +1070,16 @@ function pintarLogin(){
     const rb = $("#reenv"); let seg = r.vencido ? 0 : (+r.reenvio_en || 60);
     const pintarSeg = () => { rb.textContent = seg>0 ? `Reenviar código (${seg}s)` : "Reenviar código"; rb.disabled = seg>0; };
     pintarSeg(); const tick = setInterval(() => { if(!rb.isConnected) return clearInterval(tick); seg--; pintarSeg(); if(seg<=0) clearInterval(tick); }, 1000);
-    rb.onclick = async () => { try{ const r2 = await unaVez(() => conBoton(rb, () => API.ingresar(L.email))); if(!r2) return; if(r2.estado==="codigo"){ toast("Te enviamos un código nuevo"); pasoCodigo(r2); } else resultado(r2); }catch(err){ fallo(err); } };
+    const ext = r.registro ? {nombre:L.nombre} : {};
+    rb.onclick = async () => { try{ const r2 = await unaVez(() => conBoton(rb, () => API.ingresar(L.email, ext))); if(!r2) return; if(r2.estado==="codigo"){ toast("Te enviamos un código nuevo"); pasoCodigo(r2); } else resultado(r2); }catch(err){ fallo(err); } };
     $("#fc").onsubmit = async e => { e.preventDefault();
-      try{ const r2 = await unaVez(() => conBoton($("#bc"), () => API.ingresar(L.email, {codigo:$("#lcode").value.trim()}))); resultado(r2); }catch(err){ fallo(err); } };
+      try{ const r2 = await unaVez(() => conBoton($("#bc"), () => API.ingresar(L.email, {...ext, codigo:$("#lcode").value.trim()}))); if(r2?.nuevo) toast("¡Listo! Ya tienes acceso a Pricing Desk"); resultado(r2); }catch(err){ fallo(err); } };
   };
 
-  const pasoSolicitud = () => {
+  const pasoSolicitud = (error) => {
     pantallaLogin(`<h1>Aún no tienes acceso</h1>
       <p class="muted small" style="margin-top:0"><b>${esc(L.email)}</b> no está registrado en Pricing Desk. Envía una solicitud al administrador y te avisaremos por correo cuando esté lista.</p>
+      ${error ? `<div class="banner err">${esc(error)}</div>` : ""}
       <form class="grid" style="gap:10px" id="f3">
         <label class="f">Tu nombre completo<input type="text" id="snom" required maxlength="120"></label>
         <label class="f">Área o motivo (opcional)<input type="text" id="scom" maxlength="300" placeholder="Ej. Ventas canal retail"></label>
@@ -1107,8 +1146,8 @@ function tabsRol(){
     case "solicitante": return conAprob([T.mis]);
     case "aprobador":   return [T.aprob, T.mis];
     case "encargado":   return conAprob([T.inicio, T.tickets, T.mis, T.config]);
-    case "manager":     return conAprob([T.rev, T.analitica, T.inicio, T.tickets, T.horas, T.mis, T.config]);
-    default:            return [T.inicio, T.rev, T.tickets, T.analitica, T.horas, T.aprob, T.mis, T.usuarios, T.config];
+    case "manager":     return conAprob([T.rev, T.analitica, T.inicio, T.tickets, T.mis, T.config]);
+    default:            return [T.inicio, T.rev, T.tickets, T.analitica, T.aprob, T.mis, T.usuarios, T.config];
   }
 }
 function pintarApp(silencioso=false){
@@ -1248,8 +1287,7 @@ function vInicio(){
     ["En revisión del manager", T.filter(t => t.estado==="Revisión manager").length, "k-slate", {vista:"Revisión manager", asignado:""}],
     [`En ${aprobTitulo()}`, T.filter(t => t.estado==="Pendiente aprobación").length, "k-slate", {vista:"Pendiente aprobación", asignado:""}],
     ["Esperando información", base.filter(t => t.estado==="En espera de información").length, "k-slate", {vista:"En espera de información"}],
-    ["Cerrados esta semana", T.filter(t => t.cerrado_at && dia(t.cerrado_at) >= lunes).length, "k-green", {vista:"cerrados", desde:lunes}],
-    ["Horas esta semana", fNum(horasSem,1), "k-slate", null]
+    ["Cerrados esta semana", T.filter(t => t.cerrado_at && dia(t.cerrado_at) >= lunes).length, "k-green", {vista:"cerrados", desde:lunes}]
   ];
   let lista = colaGlobal(); if(S.soloMios) lista = lista.filter(t => lower(t.asignado_email)===S.me.email);
   const pos = new Map(colaGlobal().map((t,i) => [t.id, i+1]));
@@ -1300,75 +1338,100 @@ async function guardarOrden(idsVisibles){
 /* =====================================================================
    Tickets: vistas abiertas / cerradas con filtros
    ===================================================================== */
+// Filtros con selección múltiple (cada filtro es una lista; vacía = todos)
+const A = v => Array.isArray(v) ? v : (v ? [v] : []);
+function normF(){
+  const f = S.f;
+  if(!["abiertos","cerrados","todos"].includes(f.vista)){ if(f.vista) f.estados = [f.vista]; f.vista = "todos"; }
+  f.estados = A(f.estados); f.tipo = A(f.tipo); f.asignado = A(f.asignado); f.solicitante = A(f.solicitante); f.alerta = A(f.alerta);
+  f.prioridad = A(f.prioridad).flatMap(x => x==="altas" ? ["Alta","Urgente"] : [x]);
+  f.q ??= ""; f.desde ??= ""; f.hasta ??= "";
+  return f;
+}
 function filtrar(){
-  const f = S.f, q = lower(f.q);
+  const f = normF(), q = lower(f.q);
   return S.tickets.filter(t => {
     const c = esCerrado(t);
     if(f.vista==="abiertos" && c) return false;
     if(f.vista==="cerrados" && !c) return false;
-    if(!["abiertos","cerrados","todos"].includes(f.vista) && t.estado!==f.vista) return false;
+    if(f.estados.length && !f.estados.includes(t.estado)) return false;
     if(q && !lower([t.codigo,t.titulo,t.cliente,t.descripcion,t.linea_producto,t.solicitante_email,nombreDe(t.solicitante_email)].join(" ")).includes(q)) return false;
-    if(f.tipo && t.tipo!==f.tipo) return false;
-    if(f.prioridad==="altas" && !["Alta","Urgente"].includes(t.prioridad)) return false;
-    if(f.prioridad && f.prioridad!=="altas" && t.prioridad!==f.prioridad) return false;
-    if(f.asignado==="yo" && lower(t.asignado_email)!==S.me.email) return false;
-    if(f.asignado==="sin" && t.asignado_email) return false;
-    if(f.asignado && !["yo","sin"].includes(f.asignado) && lower(t.asignado_email)!==f.asignado) return false;
-    if(f.solicitante && lower(t.solicitante_email)!==f.solicitante) return false;
+    if(f.tipo.length && !f.tipo.includes(t.tipo)) return false;
+    if(f.prioridad.length && !f.prioridad.includes(t.prioridad)) return false;
+    if(f.asignado.length && !f.asignado.some(a => a==="yo" ? lower(t.asignado_email)===S.me.email : a==="sin" ? !t.asignado_email : lower(t.asignado_email)===a)) return false;
+    if(f.solicitante.length && !f.solicitante.includes(lower(t.solicitante_email))) return false;
     const fd = f.vista==="cerrados" ? dia(t.cerrado_at) : dia(t.created_at);
     if(f.desde && fd < f.desde) return false;
     if(f.hasta && fd > f.hasta) return false;
-    const a = alertaDe(t);
-    if(f.alerta==="cualquiera" && !a) return false;
-    if(f.alerta && f.alerta!=="cualquiera" && a!==f.alerta) return false;
+    if(f.alerta.length){ const a = alertaDe(t); if(!f.alerta.some(x => x==="cualquiera" ? !!a : x===a)) return false; }
     return true;
   });
+}
+// Lista desplegable con casillas
+function msel(id, nombre, opciones, sel){
+  const n = sel.length, txt = !n ? `${nombre}: todos` : n===1 ? `${nombre}: ${(opciones.find(o => o[0]===sel[0])||[0,sel[0]])[1]}` : `${nombre}: ${n} seleccionados`;
+  return `<div class="ms" data-ms="${id}"><button type="button" class="ms-b ${n?"on":""}">${esc(txt)} <span class="muted">▾</span></button>
+    <div class="ms-p hidden">${opciones.map(([v,l]) => `<label class="ms-o"><input type="checkbox" value="${esc(v)}" ${sel.includes(v)?"checked":""}> ${esc(l)}</label>`).join("")}
+    <div class="row" style="justify-content:space-between;margin-top:6px;border-top:1px solid var(--line);padding-top:6px"><a href="#" class="ms-c">Quitar selección</a><a href="#" class="ms-x">Listo</a></div></div></div>`;
 }
 function tablaTickets(lista, cerrada=false){
   if(!lista.length) return `<div class="tbl-wrap"><div class="empty">No hay tickets con esos filtros.</div></div>`;
   return `<div class="tbl-wrap"><table><thead><tr>
-    <th>Ticket</th><th>Solicitud</th><th>Solicitante</th><th>Prioridad</th><th>Estado</th><th>Asignado</th>
-    ${cerrada ? `<th>Cerrado</th><th class="r">Días</th><th class="r">Horas</th>` : `<th>Fecha estimada</th><th class="r">Atraso</th><th></th>`}
+    <th>Ticket</th><th>Solicitud</th><th>Solicitante</th><th>Prioridad</th><th>Estado</th><th>Encargado</th>
+    ${cerrada ? `<th>Cerrado</th><th class="r">Días</th><th></th>` : `<th>Fecha estimada</th><th class="r">Atraso</th><th></th>`}
     </tr></thead><tbody>${lista.map(t => `<tr class="click" data-open="${t.id}">
       <td class="code">${esc(t.codigo)} ${tagPrueba(t)}</td>
       <td><div class="b">${esc(t.titulo)}</div><div class="sub">${esc(tipoTxt(t))}</div></td>
       <td class="small">${esc(nombreDe(t.solicitante_email))}</td><td>${tagPrio(t.prioridad)}</td><td>${tagEstado(t.estado)} ${tagAprob(t)}</td>
       <td class="small">${esc(t.asignado_email ? nombreDe(t.asignado_email) : "Sin asignar")}</td>
-      ${cerrada ? `<td class="small num">${fFecha(t.cerrado_at)}</td><td class="r num">${t.cerrado_at?diasEntre(t.created_at,t.cerrado_at):"—"}</td><td class="r num">${t.horas_ejecucion!=null?fNum(t.horas_ejecucion,2):"—"}</td>`
+      ${cerrada ? `<td class="small num">${fFecha(t.cerrado_at)}</td><td class="r num">${t.cerrado_at?diasEntre(t.created_at,t.cerrado_at):"—"}</td><td></td>`
         : `<td class="small num">${fFecha(t.fecha_eta)}</td><td class="r num" style="${diasAtraso(t)&&!esCerrado(t)?"color:var(--brick);font-weight:700":""}">${!esCerrado(t)&&diasAtraso(t)?diasAtraso(t)+" d":"—"}</td><td>${tagAlerta(alertaDe(t))}</td>`}
       </tr>`).join("")}</tbody></table></div>`;
 }
 function vTickets(){
-  const f = S.f;
+  const f = normF();
   const staffUs = S.usuarios.filter(u => ["encargado","manager","admin"].includes(u.rol));
   const sols = [...new Set(S.tickets.map(t => lower(t.solicitante_email)))].filter(Boolean);
   const nA = S.tickets.filter(t=>!esCerrado(t)).length, nC = S.tickets.length - nA;
-  const vistaBase = ["abiertos","cerrados","todos"].includes(f.vista) ? f.vista : "abiertos";
+  const vistaBase = f.vista;
   $("#main").innerHTML = `
     <div class="page-h"><div class="grow"><h1>Tickets</h1><p class="muted small">Solicitudes especiales (no SPA, SPE ni SDE).</p></div>
-      <div class="seg" id="seg">${[["abiertos",`Abiertos (${nA})`],["cerrados",`Cerrados (${nC})`],["todos","Todos"]].map(([k,l]) => `<button data-v="${k}" class="${vistaBase===k && ["abiertos","cerrados","todos"].includes(f.vista)?"on":""}">${l}</button>`).join("")}</div>
+      <div class="seg" id="seg">${[["abiertos",`Abiertos (${nA})`],["cerrados",`Cerrados (${nC})`],["todos","Todos"]].map(([k,l]) => `<button data-v="${k}" class="${vistaBase===k?"on":""}">${l}</button>`).join("")}</div>
       <button class="btn sm" id="csv">Exportar a Excel</button><button class="btn sm" id="recargar">Actualizar</button></div>
     <div class="filters">
       <input type="search" id="fq" placeholder="Buscar código, título, cliente…" value="${esc(f.q)}">
-      <select id="fest"><option value="${vistaBase}">Cualquier estado</option>${ESTADOS.map(x=>`<option ${f.vista===x?"selected":""}>${x}</option>`).join("")}</select>
-      <select id="ftipo"><option value="">Todos los tipos</option>${TIPOS.map(x=>`<option ${f.tipo===x?"selected":""}>${esc(x)}</option>`).join("")}</select>
-      <select id="fprio"><option value="">Toda prioridad</option><option value="altas" ${f.prioridad==="altas"?"selected":""}>Alta o urgente</option>${PRIORIDADES.map(x=>`<option ${f.prioridad===x?"selected":""}>${x}</option>`).join("")}</select>
-      <select id="fasig"><option value="">Cualquier responsable</option><option value="yo" ${f.asignado==="yo"?"selected":""}>Asignados a mí</option><option value="sin" ${f.asignado==="sin"?"selected":""}>Sin asignar</option>${staffUs.map(u=>`<option value="${esc(lower(u.email))}" ${f.asignado===lower(u.email)?"selected":""}>${esc(u.nombre||u.email)}</option>`).join("")}</select>
-      <select id="fsol"><option value="">Cualquier solicitante</option>${sols.map(e=>`<option value="${esc(e)}" ${f.solicitante===e?"selected":""}>${esc(nombreDe(e))}</option>`).join("")}</select>
+      ${msel("estados","Estado", ESTADOS.map(x => [x,x]), f.estados)}
+      ${msel("tipo","Tipo", TIPOS.map(x => [x,x]), f.tipo)}
+      ${msel("prioridad","Prioridad", PRIORIDADES.map(x => [x,x]), f.prioridad)}
+      ${msel("asignado","Encargado", [["yo","Asignados a mí"],["sin","Sin asignar"], ...staffUs.map(u => [lower(u.email), u.nombre||u.email])], f.asignado)}
+      ${msel("solicitante","Solicitante", sols.map(e => [e, nombreDe(e)]), f.solicitante)}
       <label class="f" style="font-weight:500">${f.vista==="cerrados"?"Cerrado":"Ingresado"} desde<input type="date" id="fdesde" value="${f.desde}"></label>
       <label class="f" style="font-weight:500">hasta<input type="date" id="fhasta" value="${f.hasta}"></label>
-      <select id="falerta"><option value="">Con o sin alerta</option><option value="cualquiera" ${f.alerta==="cualquiera"?"selected":""}>Con alguna alerta</option>${["Atrasada","Por vencer","Sin estimado","Aprobación demorada"].map(x=>`<option ${f.alerta===x?"selected":""}>${x}</option>`).join("")}</select>
+      ${msel("alerta","Alerta", [["cualquiera","Con alguna alerta"], ...["Atrasada","Por vencer","Sin estimado","Aprobación demorada"].map(x => [x,x])], f.alerta)}
     </div>
     <div class="row" style="margin-bottom:8px"><span class="small muted grow" id="cuenta"></span><button class="btn ghost sm" id="limpiar">Limpiar filtros</button></div>
     <div id="lista"></div>`;
-  const pintar = () => { const l = filtrar(); if(S.f.alerta==="Atrasada") l.sort((a,b) => diasAtraso(b)-diasAtraso(a)); $("#cuenta").textContent = `${l.length} ticket${l.length===1?"":"s"}`;
-    $("#lista").innerHTML = tablaTickets(l, S.f.vista==="cerrados" || CERRADOS.includes(S.f.vista));
+  const pintar = () => { const l = filtrar(); if(S.f.alerta.includes("Atrasada")) l.sort((a,b) => diasAtraso(b)-diasAtraso(a)); $("#cuenta").textContent = `${l.length} ticket${l.length===1?"":"s"}`;
+    $("#lista").innerHTML = tablaTickets(l, S.f.vista==="cerrados" || (S.f.estados.length && S.f.estados.every(x => CERRADOS.includes(x))));
     $$("#lista [data-open]").forEach(el => el.onclick = () => abrirDetalle(+el.dataset.open)); };
-  const leer = () => { S.f = {vista:$("#fest").value, q:$("#fq").value, tipo:$("#ftipo").value, prioridad:$("#fprio").value, asignado:$("#fasig").value,
-    solicitante:$("#fsol").value, desde:$("#fdesde").value, hasta:$("#fhasta").value, alerta:$("#falerta").value}; pintar(); };
-  $("#fq").oninput = leer; ["#fest","#ftipo","#fprio","#fasig","#fsol","#fdesde","#fhasta","#falerta"].forEach(s => $(s).onchange = leer);
+  const leer = () => { Object.assign(S.f, {q:$("#fq").value, desde:$("#fdesde").value, hasta:$("#fhasta").value}); pintar(); };
+  $("#fq").oninput = leer; ["#fdesde","#fhasta"].forEach(s => $(s).onchange = leer);
+  const cerrarMs = () => $$(".ms-p").forEach(p => p.classList.add("hidden"));
+  $$(".ms").forEach(ms => { const id = ms.dataset.ms, p = $(".ms-p", ms), b = $(".ms-b", ms);
+    const nombre = b.textContent.split(":")[0];
+    const opts = $$("input", p).map(c => [c.value, c.parentElement.textContent.trim()]);
+    const act = () => { S.f[id] = $$("input:checked", p).map(c => c.value); const n = S.f[id].length;
+      b.innerHTML = `${esc(!n ? `${nombre}: todos` : n===1 ? `${nombre}: ${(opts.find(o => o[0]===S.f[id][0])||[0,""])[1]}` : `${nombre}: ${n} seleccionados`)} <span class="muted">▾</span>`;
+      b.classList.toggle("on", !!n); pintar(); };
+    b.onclick = e => { e.stopPropagation(); const abierto = !p.classList.contains("hidden"); cerrarMs(); if(!abierto) p.classList.remove("hidden"); };
+    p.onclick = e => e.stopPropagation();
+    $$("input", p).forEach(c => c.onchange = act);
+    $(".ms-c", p).onclick = e => { e.preventDefault(); $$("input", p).forEach(c => c.checked = false); act(); };
+    $(".ms-x", p).onclick = e => { e.preventDefault(); cerrarMs(); };
+  });
+  if(!window.__ms){ window.__ms = true; document.addEventListener("click", () => $$(".ms-p").forEach(p => p.classList.add("hidden"))); }
   $$("#seg button").forEach(b => b.onclick = () => { S.f.vista = b.dataset.v; vTickets(); });
-  $("#limpiar").onclick = () => { S.f = {vista:vistaBase, q:"", tipo:"", prioridad:"", asignado:"", solicitante:"", desde:"", hasta:"", alerta:""}; vTickets(); };
+  $("#limpiar").onclick = () => { S.f = {vista:vistaBase, q:"", estados:[], tipo:[], prioridad:[], asignado:[], solicitante:[], desde:"", hasta:"", alerta:[]}; vTickets(); };
   $("#recargar").onclick = refrescar;
   $("#csv").onclick = async ev => { try{ await conBoton(ev.currentTarget, () => exportarExcel(filtrar().map(filaReporte), `tickets_pricing_${hoy()}.xlsx`, "Tickets")); }catch(e){ fallo(e); } };
   pintar();
@@ -1383,7 +1446,7 @@ function filaReporte(t){
     prioridad:t.prioridad, estado:t.estado, estado_general:cerr?"Cerrado":"Abierto",
     solicitante_email:t.solicitante_email||"", asignado_email:t.asignado_email||"", cerrado_por:t.cerrado_por||"",
     fecha_solicitud:dia(t.created_at), fecha_eta:t.fecha_eta||"", fecha_vencimiento:t.fecha_vencimiento||"", fecha_cierre:cerr?dia(t.cerrado_at):"",
-    dias_abierto:diasEntre(t.created_at, cerr?t.cerrado_at:h), estado_sla:sla, horas_ejecucion:t.horas_ejecucion==null?"":Number(t.horas_ejecucion),
+    dias_abierto:diasEntre(t.created_at, cerr?t.cerrado_at:h), estado_sla:sla,
     manager_email:t.manager_email||"", manager_estado:t.manager_estado||"",
     requiere_aprobacion:t.requiere_aprobacion?"Sí":"No", aprob_estado:t.aprob_estado, aprob_email:t.aprob_email||"",
     dias_atraso: diasAtraso(t),
@@ -1473,7 +1536,7 @@ function vAnalitica(){
   const completados = cer.filter(t => t.estado==="Completado").length;
   const kpis = [["Ingresados", ing.length, "k-slate"], ["Cerrados", cer.length, "k-green"], ["Abiertos hoy", abiertos.length, "k-olive"],
     ["Días promedio de atención", lead==null?"—":fNum(lead,1), "k-slate"], ["Atrasadas hoy (ETA)", atrasadasHoy, atrasadasHoy?"k-brick":"k-green"], ["Completados a tiempo (ETA)", pct==null?"—":fNum(pct,0)+" %", pct!=null&&pct<80?"k-brick":"k-green"],
-    ["Horas registradas", fNum(totH,1), "k-slate"], ["Horas promedio por ticket", cer.length?fNum(totH/Math.max(cer.length,1),1):"—", "k-slate"]];
+    ["Completados en el período", completados, "k-green"]];
   const porMes = k => meses.map(m => k(m));
   const sIng = porMes(m => T.filter(t => mesKey(t.created_at)===m).length), sCer = porMes(m => T.filter(t => t.cerrado_at && mesKey(t.cerrado_at)===m).length);
   const sHor = porMes(m => S.horas.filter(x => mesKey(x.fecha)===m).reduce((s,x)=>s+Number(x.horas),0));
@@ -1493,9 +1556,8 @@ function vAnalitica(){
     <div class="grid kpis">${kpis.map(([l,v,c]) => `<div class="kpi ${c}"><div class="v num">${v}</div><div class="l">${l}</div></div>`).join("")}</div>
     <div class="grid halves" style="margin-top:14px">
       <div class="card"><h2>Ingresados vs. cerrados por mes</h2>${columnas({labels:meses.map(mesLbl), series:[{name:"Ingresados", color:COL.slate, values:sIng},{name:"Cerrados", color:COL.green, values:sCer}]})}</div>
-      <div class="card"><h2>Horas de ejecución registradas por mes</h2>${columnas({labels:meses.map(mesLbl), series:[{name:"Horas", color:COL.green, values:sHor}], fmt:v=>fNum(v,0)})}</div>
-      <div class="card"><h2>Horas por tipo de solicitud</h2><p class="hint" style="margin-top:-6px">Total del período y promedio por ticket</p>
-        ${barras(hTipo.sort((a,b)=>b[1]-a[1]).map(([l,v,n]) => [l, v, `· ${fNum(v/n,1)} h/ticket`]), v=>fNum(v,1)+" h")}</div>
+      <div class="card"><h2>Días promedio de atención por tipo</h2><p class="hint" style="margin-top:-6px">Desde que se crea hasta que se cierra (cerrados del período)</p>
+        ${barras(tabla.filter(r => r.dias!=null).sort((a,b)=>b.dias-a.dias).map(r => [r.tp, r.dias, `· ${r.cer} cerrado${r.cer===1?"":"s"}`]), v=>fNum(v,1)+" días", COL.slate)}</div>
       <div class="card"><h2>Antigüedad de los tickets abiertos</h2>${columnas({labels:aging.map(a=>a[0]), series:[{name:"Tickets", color:COL.slate, values:aging.map(a=>a[1])}], alto:200})}</div>
       <div class="card"><h2>Abiertos por tipo</h2>${barras(abTipo, v=>fNum(v,0), COL.slate)}</div>
       <div class="card"><h2>Resultado de los cierres</h2>
@@ -1504,8 +1566,8 @@ function vAnalitica(){
         <div class="kv" style="margin-top:14px"><dt>Completados</dt><dd>${completados}</dd><dt>Con ${esc(aprobTitulo())}</dt><dd>${apr.length} resueltas${aprDias!=null?` · ${fNum(aprDias,1)} días promedio de respuesta`:""}</dd></div></div>
     </div>
     <div class="card" style="margin-top:14px;padding:0;overflow:hidden"><div style="padding:16px 16px 0"><h2>Resumen por tipo</h2></div>
-      <div class="tbl-wrap" style="border:0;border-radius:0"><table><thead><tr><th>Tipo de solicitud</th><th class="r">Ingresados</th><th class="r">Cerrados</th><th class="r">Abiertos</th><th class="r">Días prom.</th><th class="r">Horas</th><th class="r">Horas/ticket</th></tr></thead>
-      <tbody>${tabla.map(r => `<tr><td>${esc(r.tp)}</td><td class="r num">${r.ing}</td><td class="r num">${r.cer}</td><td class="r num">${r.ab}</td><td class="r num">${r.dias==null?"—":fNum(r.dias,1)}</td><td class="r num">${fNum(r.horas,1)}</td><td class="r num">${r.hprom==null?"—":fNum(r.hprom,1)}</td></tr>`).join("") || `<tr><td colspan="7" class="empty">Sin datos</td></tr>`}</tbody></table></div></div>`;
+      <div class="tbl-wrap" style="border:0;border-radius:0"><table><thead><tr><th>Tipo de solicitud</th><th class="r">Ingresados</th><th class="r">Cerrados</th><th class="r">Abiertos</th><th class="r">Días prom.</th></tr></thead>
+      <tbody>${tabla.map(r => `<tr><td>${esc(r.tp)}</td><td class="r num">${r.ing}</td><td class="r num">${r.cer}</td><td class="r num">${r.ab}</td><td class="r num">${r.dias==null?"—":fNum(r.dias,1)}</td></tr>`).join("") || `<tr><td colspan="5" class="empty">Sin datos</td></tr>`}</tbody></table></div></div>`;
   $$("#rg button").forEach(b => b.onclick = () => { S.an.rango = b.dataset.r; vAnalitica(); });
 }
 
@@ -1988,7 +2050,6 @@ function imprimirAuditoria(t, bit, adj, notas){
     <h2>3. Atención por Pricing</h2><table class="kv">
       ${fila("Encargado", n(t.asignado_email))}${fila("Estado actual", esc(t.estado))}${fila("Fecha estimada (ETA)", t.fecha_eta ? t.fecha_eta.split("-").reverse().join("/") : "—")}
       ${t.cerrado_at ? fila("Cerrado por", n(t.cerrado_por)) + fila("Fecha de cierre", f(t.cerrado_at)) + fila("Días totales", diasEntre(t.created_at, t.cerrado_at)) : ""}
-      ${fila("Tiempo de ejecución", t.horas_ejecucion!=null ? fHoras(t.horas_ejecucion) : "—")}
       ${t.resolucion ? fila("Resolución", `<div class="pre">${esc(t.resolucion)}</div>`) : ""}</table>
     ${horas.length ? `<table class="l" style="margin-top:8px"><thead><tr><th>Fecha</th><th>Registrado por</th><th>Nota</th><th>Horas</th></tr></thead><tbody>
       ${horas.map(h => `<tr><td>${String(h.fecha).slice(0,10).split("-").reverse().join("/")}</td><td>${n(h.usuario_email)}</td><td>${esc(h.nota||"")}</td><td>${fHoras(h.horas)}</td></tr>`).join("")}</tbody></table>` : ""}
@@ -2046,9 +2107,18 @@ function abrirNuevo(){
         const nuevo = await API.crear(t);
         let fallidos = 0;
         for(const f of archivos){ try{ await API.subir(nuevo.id, f); }catch(err){ fallidos++; } }
-        toast((nuevo.estado==="Revisión manager" ? `Solicitud ${nuevo.codigo} enviada a revisión` : `Solicitud ${nuevo.codigo} enviada`)
-          + (archivos.length ? (fallidos ? ` · ${fallidos} archivo(s) no se pudieron adjuntar` : ` con ${archivos.length} archivo(s)`) : ""), !!fallidos);
-        await recargar(); if(!staff()) S.tab = "mis"; pintarApp(); abrirDetalle(nuevo.id);
+        await recargar(); if(!staff()) S.tab = "mis"; pintarApp();
+        const pos = colaGlobal().findIndex(x => x.id===nuevo.id) + 1;
+        modal(`<div class="modal-h"><div><div class="code">${esc(nuevo.codigo)}</div><h1>¡Solicitud enviada!</h1></div><button class="x">×</button></div>
+          <div class="ok-pop">
+            <p style="margin-top:0">${nuevo.estado==="Revisión manager"
+              ? `Tu solicitud pasa primero a la <b>revisión del manager de Pricing</b>. Una vez aprobada, entra a la <b>cola de atención</b> del equipo de Pricing.`
+              : `Tu solicitud pasó a la <b>cola de atención</b> del equipo de Pricing${pos?` (posición <b>#${pos}</b>)`:""}.`}</p>
+            <p>Te avisaremos por correo cada avance y puedes seguirla en <b>Mis solicitudes</b>.</p>
+            ${fallidos ? `<div class="banner err">${fallidos} archivo(s) no se pudieron adjuntar; puedes subirlos desde el detalle.</div>` : ""}
+          </div>
+          <div class="row" style="justify-content:flex-end;gap:8px;margin-top:6px"><button class="btn" id="pop_ver">Ver mi solicitud</button><button class="btn pri" id="pop_ok">Entendido</button></div>`, "narrow");
+        $("#pop_ok").onclick = cerrarModal; $("#pop_ver").onclick = () => abrirDetalle(nuevo.id);
       });
     }catch(err){ fallo(err); }
   };
@@ -2058,26 +2128,20 @@ function abrirNuevo(){
 function abrirCierre(id){
   const t = S.tickets.find(x => x.id===id); if(!t) return;
   if(t.aprob_estado==="Pendiente") return toast(`Hay una solicitud de ${aprobTitulo()} pendiente`, true);
-  const previas = S.horas.filter(x => x.ticket_id===id).reduce((s,x)=>s+Number(x.horas),0);
   modal(`
     <div class="modal-h"><div><div class="code">${esc(t.codigo)}</div><h1>Cerrar ticket</h1><div class="muted small">${esc(t.titulo)}</div></div><button class="x">×</button></div>
     <form class="form" id="fcierre">
       <label class="f full">Resultado<select id="cres"><option>Completado</option><option>Rechazado</option><option>Cancelado</option></select></label>
-      <div class="full"><div class="f" style="margin-bottom:4px">Tiempo de ejecución${previas?` <span class="muted" style="font-weight:500">(adicional a ${fHoras(previas)} ya registradas)</span>`:""}</div>
-        <div class="row" style="flex-wrap:nowrap"><label class="f grow">Horas<input type="number" id="ch" min="0" step="1" value="" required></label>
-        <label class="f grow">Minutos<select id="cm">${[0,15,30,45].map(m=>`<option value="${m}">${m}</option>`).join("")}</select></label></div></div>
       <label class="f full">Resolución (le llega al solicitante)<textarea id="ctxt" rows="4" required placeholder="Qué se resolvió, precios o condiciones aprobadas, vigencia…"></textarea></label>
       <div class="full hint">Se notificará a ${esc(nombreDe(t.solicitante_email))} por la app${S.cfg.flow_url?" y por correo":""}.</div>
       <div class="full row" style="justify-content:flex-end"><button type="button" class="btn" id="ccancel">Cancelar</button><button class="btn pri" type="submit" id="cbtn">Cerrar y notificar</button></div>
     </form>`, "narrow");
   $("#ccancel").onclick = () => abrirDetalle(id);
-  $("#ch").focus();
+  $("#ctxt").focus();
   $("#fcierre").onsubmit = async e => {
     e.preventDefault();
-    const horas = (+$("#ch").value||0) + (+$("#cm").value||0)/60;
-    if(horas <= 0 && $("#cres").value==="Completado") return toast("Registra el tiempo de ejecución", true);
-    try{ await conBoton($("#cbtn"), () => API.cerrar(id, $("#cres").value, Math.round(horas*100)/100, $("#ctxt").value.trim()));
-      toast(`${t.codigo} cerrado · ${fHoras(horas)}`); cerrarModal(); await refrescar(); }catch(err){ fallo(err); }
+    try{ await conBoton($("#cbtn"), () => API.cerrar(id, $("#cres").value, null, $("#ctxt").value.trim()));
+      toast(`${t.codigo} cerrado`); cerrarModal(); await refrescar(); }catch(err){ fallo(err); }
   };
 }
 
@@ -2087,8 +2151,8 @@ async function abrirDetalle(id){
   if(!t) return toast("Ticket no encontrado", true);
   modal(`<div class="empty"><span class="spin"></span> Cargando…</div>`, "wide");
   let bit = [], adj = [], notas = [];
-  const equipo = staff() || lower(t.asignado_email)===S.me.email;
-  try{ [bit, adj, notas] = await Promise.all([API.bitacora(id), API.adjuntos(id), equipo && (enCola(t) || esCerrado(t)) ? API.notas(id) : []]); }catch(e){ fallo(e); }
+  const equipo = staff() || lower(t.asignado_email)===S.me.email, verNotas = (equipo || esMio(t)) && (enCola(t) || esCerrado(t));
+  try{ [bit, adj, notas] = await Promise.all([API.bitacora(id), API.adjuntos(id), verNotas ? API.notas(id) : []]); }catch(e){ fallo(e); }
   const st = staff() || lower(t.asignado_email)===S.me.email, cerrado = esCerrado(t), a = st ? alertaDe(t) : null, ap = S.cfg.aprobacion;
   const editSol = !st && solicitantePuedeEditar(t);
   const v = (k, d="—") => t[k]==null || t[k]==="" ? d : t[k];
@@ -2138,7 +2202,7 @@ async function abrirDetalle(id){
 
   // Bloque de cierre
   const cierre = cerrado ? `<div class="box ${t.estado==="Completado"?"ok":t.estado==="Rechazado"?"no":""}"><h3>${esc(t.estado)}</h3>
-    <div class="small">Por <b>${esc(nombreDe(t.cerrado_por))}</b> el ${fFechaHora(t.cerrado_at)} · ${diasEntre(t.created_at, t.cerrado_at)} días${t.horas_ejecucion!=null?` · tiempo de ejecución <b>${fHoras(t.horas_ejecucion)}</b>`:""}</div>
+    <div class="small">Por <b>${esc(nombreDe(t.cerrado_por))}</b> el ${fFechaHora(t.cerrado_at)} · ${diasEntre(t.created_at, t.cerrado_at)} días</div>
     ${t.resolucion?`<div class="desc" style="margin-top:8px">${esc(t.resolucion)}</div>`:""}</div>` : "";
 
   // Posición en la cola (para el solicitante)
@@ -2180,7 +2244,7 @@ async function abrirDetalle(id){
       <div><div class="row" style="gap:8px"><span class="code" style="font-size:16px">${esc(t.codigo)}</span>${tagEstado(t.estado)}${tagAprob(t)}${tagAlerta(a)}${tagPrueba(t)}${!cerrado&&st&&pos?`<span class="tag t-slate">#${pos} en cola</span>`:""}</div>
         <h1 style="margin-top:6px">${esc(t.titulo)}</h1>
         <div class="muted small">${esc(tipoTxt(t))} · Solicitado por ${esc(nombreDe(t.solicitante_email))} el ${fFecha(t.created_at)}</div></div>
-      <div class="row" style="gap:8px;flex-wrap:nowrap;align-items:flex-start">${aprobadaParaAuditoria(t) ? `<button class="btn sm" id="a_pdf" title="Abre un documento con las aprobaciones y el historial para imprimir o guardar como PDF">🖨 PDF de auditoría</button>` : ""}<button class="x">×</button></div>
+      <div class="row" style="gap:8px;flex-wrap:nowrap;align-items:flex-start">${staff() && aprobadaParaAuditoria(t) ? `<button class="btn sm" id="a_pdf" title="Abre un documento con las aprobaciones y el historial para imprimir o guardar como PDF">🖨 PDF de auditoría</button>` : ""}<button class="x">×</button></div>
     </div>
     ${t.estado==="En espera de información" && esMio(t) ? `<div class="box ap" style="margin-bottom:12px"><h3>Pricing necesita información</h3>
         <div class="desc" style="margin-bottom:10px">${esc(t.info_pedida || "Revisa los comentarios del equipo de Pricing.")}</div>
@@ -2197,8 +2261,8 @@ async function abrirDetalle(id){
       </div>
       <div class="grid" style="gap:14px;align-content:start">
         ${revision}${aprob}
-        ${equipo && (enCola(t) || esCerrado(t)) ? `<div class="card flat"><h3>Notas de seguimiento <span class="muted small" style="font-weight:500">· solo equipo de Pricing</span></h3>
-          ${!esCerrado(t) ? `<textarea id="nt_txt" rows="2" placeholder="Agrega una nota (avance, llamada, supuesto, pendiente…)"></textarea>
+        ${verNotas && (equipo || notas.length) ? `<div class="card flat"><h3>Notas de seguimiento <span class="muted small" style="font-weight:500">· ${equipo?"le llegan por correo al solicitante":"del equipo de Pricing"}</span></h3>
+          ${equipo && !esCerrado(t) ? `<textarea id="nt_txt" rows="2" placeholder="Agrega una nota (avance, llamada, supuesto, pendiente…)"></textarea>
           <div class="row" style="justify-content:flex-end;margin:8px 0 6px"><button class="btn sm pri" id="nt_btn">Agregar nota</button></div>` : ""}
           <div id="nt_l">${notas.length ? notas.slice().reverse().map(n => `<div class="nota" data-nota="${n.id}">
               <div class="who">${fFechaHora(n.created_at)} · ${esc(nombreDe(n.autor_email))}${n.editado_at?` <span class="muted">(editada ${fFechaHora(n.editado_at)})</span>`:""}
@@ -2249,7 +2313,7 @@ async function abrirDetalle(id){
   $("#rs_ok") && ($("#rs_ok").onclick = async ev => { const r = $("#rs_txt").value.trim(); if(!r) return toast("Escribe tu respuesta para Pricing", true);
     try{ await conBoton(ev.currentTarget, () => API.reenviar(id, r)); toast(`${t.codigo} reenviada a Pricing`); await recargarDetalle(); }catch(e){ fallo(e); } });
   $("#nt_btn") && ($("#nt_btn").onclick = async ev => { const x = $("#nt_txt").value.trim(); if(!x) return;
-    try{ await conBoton(ev.currentTarget, () => API.agregarNota(id, x)); await recargarDetalle(); }catch(e){ fallo(e); } });
+    try{ await conBoton(ev.currentTarget, () => API.agregarNota(id, x)); toast(`Nota agregada · se le avisó a ${nombreDe(t.solicitante_email)}`); await recargarDetalle(); }catch(e){ fallo(e); } });
   $$(".nt-ed").forEach(a => a.onclick = e => { e.preventDefault(); const box = a.closest("[data-nota]"), nid = +box.dataset.nota, n = notas.find(x => x.id===nid);
     $(".txt", box).innerHTML = `<textarea rows="3" class="nt-in">${esc(n.texto)}</textarea><div class="row" style="justify-content:flex-end;gap:6px;margin-top:6px"><button class="btn sm nt-cn">Cancelar</button><button class="btn sm pri nt-ok">Guardar</button></div>`;
     a.remove();
