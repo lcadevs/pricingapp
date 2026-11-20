@@ -413,13 +413,13 @@ const S = {
 const rol = () => S.me?.rol;
 const staff = () => ["encargado","manager","admin"].includes(rol());
 const aprobTitulo = () => S.cfg.aprobacion.titulo || "Aprobación";
-const esAprobadorDe = t => t.aprob_estado==="Pendiente" && (lower(t.aprob_email)===S.me.email || rol()==="admin");
+const esAprobadorDe = t => t.aprob_estado==="Pendiente" && (lower(t.aprob_email)===S.me.email || ["admin","aprobador"].includes(rol()));
 const esMio = t => t.solicitante_id===S.user.id;
 const solicitantePuedeEditar = t => esMio(t) && ["Revisión manager","En espera de información"].includes(t.estado);
 const puedeCerrar = t => enCola(t) && (staff() || lower(t.asignado_email)===S.me.email);
 const esRevisorDe = t => t.manager_estado==="Pendiente" && t.estado==="Revisión manager" && (lower(t.manager_email)===S.me.email || rol()==="admin");
 const misRevisiones = () => S.tickets.filter(t => t.manager_estado==="Pendiente" && t.estado==="Revisión manager" && lower(t.manager_email)===S.me.email);
-const misAprobaciones = () => S.tickets.filter(t => t.aprob_estado==="Pendiente" && lower(t.aprob_email)===S.me.email);
+const misAprobaciones = () => S.tickets.filter(t => t.aprob_estado==="Pendiente" && (lower(t.aprob_email)===S.me.email || rol()==="aprobador"));   // el CEO es aprobador global
 const colaGlobal = () => S.tickets.filter(enCola).sort((a,b) => (a.orden??1e9)-(b.orden??1e9) || a.id-b.id);
 const noLeidas = () => S.notifs.filter(n => !n.leida).length;
 
@@ -752,7 +752,7 @@ const API_DEMO = {
   async config(){ return clon(Demo.db.cfg); },
   async guardarConfig(clave, valor){ Demo.db.cfg[clave] = clon(valor); Demo.save(); },
   async tickets(){ const st = ["encargado","manager","admin"].includes(S.me.rol);
-    return clon(Demo.db.tickets.filter(t => st || t.solicitante_id===S.me.id || lower(t.asignado_email)===S.me.email || lower(t.aprob_email)===S.me.email)).sort((a,b)=>b.id-a.id); },
+    return clon(Demo.db.tickets.filter(t => st || S.me.rol==="aprobador" || t.solicitante_id===S.me.id || lower(t.asignado_email)===S.me.email || lower(t.aprob_email)===S.me.email)).sort((a,b)=>b.id-a.id); },
   async miCola(){ const c = Demo.db.tickets.filter(t => !t.cerrado_at && esEstadoCola(t.estado)).sort((a,b)=>(a.orden??1e9)-(b.orden??1e9)||a.id-b.id);
     return c.map((t,i) => ({ticket_id:t.id, posicion:i+1, total:c.length, adelante:i, sid:t.solicitante_id})).filter(x => x.sid===S.me.id); },
   async horas(){ return staff() ? clon(Demo.db.horas) : []; },
@@ -1144,7 +1144,7 @@ function tabsRol(){
   const conAprob = l => misAprobaciones().length && !l.includes(T.aprob) ? [...l, T.aprob] : l;
   switch(rol()){
     case "solicitante": return conAprob([T.mis]);
-    case "aprobador":   return [T.aprob, T.mis];
+    case "aprobador":   return [T.aprob, T.tickets, T.mis];
     case "encargado":   return conAprob([T.inicio, T.tickets, T.mis, T.config]);
     case "manager":     return conAprob([T.rev, T.analitica, T.inicio, T.tickets, T.mis, T.config]);
     default:            return [T.inicio, T.rev, T.tickets, T.analitica, T.aprob, T.mis, T.usuarios, T.config];
